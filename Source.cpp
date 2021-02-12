@@ -14,7 +14,7 @@
 
 #include <fan/graphics.hpp>
 
-constexpr f_t font_size = 32;
+constexpr f_t font_size = 18;
 
 struct base_t{
 	EV_t listener;
@@ -27,15 +27,12 @@ struct base_t{
 	}net;
 	struct gui{
 
-		static constexpr fan::vec2 box_size{ 200, 60 };
+		static constexpr fan::vec2 box_size{ 200, font_size };
 		static constexpr fan::vec2 border_size{ 20, 10 };
-		fan::vec2 line(uint32_t n){
-			return fan::vec2(50, 50.0 + (60 * n) * tr.convert_font_size(font_size));
-		}
-		static constexpr fan::vec2 text_box_size{ 400, 60 };
+		static constexpr fan::vec2 text_box_size{ 400, font_size * 1.5 };
 		static constexpr fan::vec2 nowhere{ -10000, -10000 };
 
-		gui() : window(), camera(&window), boxes(&camera), tr(&camera), rtb(&camera) { }
+		gui() : window(fan::vec2(640, 400)), camera(&window), boxes(&camera), tr(&camera), rtb(&camera) { }
 
 		fan::window window;
 		fan::camera camera;
@@ -43,6 +40,17 @@ struct base_t{
 		fan_2d::gui::selectable_sized_text_box boxes;
 		fan_2d::gui::text_renderer tr;
 		fan_2d::gui::sized_text_box rtb;
+
+		fan::vec2 line(uint32_t n){
+			return fan::vec2(50, 50.0 + (font_size * 1.5 * n) * tr.convert_font_size(font_size));
+		}
+		fan::vec2 button(uint32_t n){
+			n++;
+			fan::vec2ui bottom_center = window.get_size();
+			bottom_center.x /= 2;
+			fan::vec2ui r = bottom_center - fan::cast<uint_t>(fan::vec2(box_size.x / 2, (box_size.y * n) + n * (border_size.y + 1)));
+			return r;
+		}
 
 		EV_evt_t evt;
 	}gui;
@@ -170,7 +178,18 @@ typedef struct{
 }ptype_t;
 
 typedef bool (*packet_cb_t)(void *u0, void *u1, void *u2);
-bool process_incoming_packet(void *u0, void *u1, void *u2, uint8_t *data, uint_t size, ptype_t *ptype, A_vec_t *packet, packet_cb_t frame_cb, packet_cb_t cursor_cb, packet_cb_t key_cb){
+bool process_incoming_packet(
+	void *u0,
+	void *u1,
+	void *u2,
+	uint8_t *data,
+	uint_t size,
+	ptype_t *ptype,
+	A_vec_t *packet,
+	packet_cb_t frame_cb,
+	packet_cb_t cursor_cb,
+	packet_cb_t key_cb
+){
 	begin_gt:
 	switch(ptype->type){
 		case PACKET_FRAME:{
@@ -514,11 +533,11 @@ bool com_view_init(base_t* base){
 	return 0;
 }
 
-VAS_node_t command_redirect(base_t *base, uint16_t port, uint64_t secret, uint32_t framerate){
+VAS_node_t com_redirect(base_t *base, uint16_t port, uint64_t secret, uint32_t framerate){
 	return 0;
 }
 
-VAS_node_t command_listen(base_t *base, uint16_t port, uint64_t secret, uint32_t framerate, uint32_t rate){
+VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t framerate, uint32_t rate){
 	VAS_node_t node = VAS_getnode_dst(&base->net.tcp.server);
 	NET_TCP_t **tcp = (NET_TCP_t **)VAS_out(&base->net.tcp.server, node);
 
@@ -583,7 +602,7 @@ VAS_node_t command_listen(base_t *base, uint16_t port, uint64_t secret, uint32_t
 	return node;
 }
 
-bool command_connect(base_t *base, NET_addr_t addr, uint64_t secret){
+bool com_view(base_t *base, NET_addr_t addr, uint64_t secret){
 	NET_TCP_connect0_t connect0;
 	if(NET_TCP_connect0(base->net.tcp.tcpview, addr, &connect0)){
 		return 1;
@@ -635,9 +654,11 @@ void run(base_t* base){
 		PR_exit(0);
 	});
 
-	base->gui.boxes.push_back(L"connect", font_size, base->gui.window.get_size() / 2 - fan::vec2(base->gui.box_size.x / 2, base->gui.box_size.y - 100), base->gui.box_size, base->gui.border_size, fan::colors::purple - 0.4);
-	base->gui.boxes.push_back(L"listen", font_size, base->gui.boxes.get_position(0) + fan::vec2(0, base->gui.boxes.get_size(0).y + 1), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
-	base->gui.boxes.push_back(L"start", font_size, base->gui.boxes.get_position(1) + fan::vec2(0, base->gui.boxes.get_size(1).y + 1),  base->gui.box_size, base->gui.border_size, fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"redirect", font_size, base->gui.button(4), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"grab", font_size, base->gui.button(3), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"view", font_size, base->gui.button(2), base->gui.box_size, base->gui.border_size, fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"start", font_size, base->gui.button(0), base->gui.box_size, base->gui.border_size, fan::colors::purple - 0.4);
+
 
 	base->gui.tr.push_back(L"Ip: ", base->gui.nowhere, fan::colors::white, font_size);
 	base->gui.tr.push_back(L"Port: ", base->gui.nowhere, fan::colors::white, font_size);
@@ -648,7 +669,7 @@ void run(base_t* base){
 	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
 	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
 	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
-	base->gui.rtb.push_back(L"200000", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
+	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
 
 	base->gui.window.add_resize_callback([&] {
 		for (int i = 0; i < base->gui.tr.size(); i++) {
@@ -670,28 +691,27 @@ void run(base_t* base){
 		}
 
 		switch (i) {
-			case 0:
-			{
-
-				base->gui.rtb.set_text(0, L"127.0.0.1");
-				base->gui.rtb.set_text(1, L"8081");
-				base->gui.rtb.set_text(2, L"123");
-				base->gui.rtb.set_text(3, L"200000");
-
+			case 0:{
 				f_t longest = base->gui.tr.get_longest_text();
 
 				f_t y = 0;
 
-				for (int i = 0; i < 3; i++) {
-					base->gui.rtb.set_position(i, base->gui.line(0) + fan::vec2(longest, y));
-					base->gui.tr.set_position(i, base->gui.rtb.get_position(i) - fan::vec2(longest, -(base->gui.rtb.get_size(i).y * 0.5 - base->gui.tr.get_text_size(base->gui.tr.get_text(i), font_size).y * 0.5)));
-					y += base->gui.rtb.get_size(i).y + 1;
-				}
+				base->gui.rtb.set_text(0, L"8081");
+				base->gui.rtb.set_text(1, L"123");
 
-				base->gui.rtb.set_position(3, base->gui.nowhere);
-
+				base->gui.tr.set_position(0, base->gui.nowhere);
+				base->gui.tr.set_position(2, base->gui.nowhere);
 				base->gui.tr.set_position(3, base->gui.nowhere);
 				base->gui.tr.set_position(4, base->gui.nowhere);
+
+				base->gui.rtb.set_position(3, base->gui.nowhere);
+				base->gui.rtb.set_position(2, base->gui.nowhere);
+
+				for (int i = 0; i < 2; i++) {
+					base->gui.rtb.set_position(i, base->gui.line(0) + fan::vec2(longest, y));
+					base->gui.tr.set_position(i + 1, base->gui.rtb.get_position(i) - fan::vec2(longest, -(base->gui.rtb.get_size(i).y * 0.5 - base->gui.tr.get_text_size(base->gui.tr.get_text(i + 1), font_size).y * 0.5)));
+					y += base->gui.rtb.get_size(i).y + 1;
+				}
 
 				base->gui.boxes.set_box_color(i, fan::colors::purple - 0.3);
 				base->gui.boxes.set_selected(i);
@@ -699,13 +719,14 @@ void run(base_t* base){
 				fan_2d::gui::current_focus[base->gui.window.get_handle()] = base->gui.rtb.get_focus_id(0);
 				base->gui.rtb.set_cursor_visible(0);
 				base->gui.rtb.set_focus_end(3);
+
 				break;
 			}
-			case 1:
-			{
+			case 1:{
 				base->gui.rtb.set_text(0, L"8081");
 				base->gui.rtb.set_text(1, L"123");
 				base->gui.rtb.set_text(2, L"10");
+				base->gui.rtb.set_text(3, L"200000");
 
 
 				f_t longest = base->gui.tr.get_longest_text();
@@ -729,11 +750,53 @@ void run(base_t* base){
 
 				break;
 			}
-			case 2:
-			{
+			case 2:{
+				base->gui.rtb.set_text(0, L"127.0.0.1");
+				base->gui.rtb.set_text(1, L"8081");
+				base->gui.rtb.set_text(2, L"123");
+
+				f_t longest = base->gui.tr.get_longest_text();
+
+				f_t y = 0;
+
+				for (int i = 0; i < 3; i++) {
+					base->gui.rtb.set_position(i, base->gui.line(0) + fan::vec2(longest, y));
+					base->gui.tr.set_position(i, base->gui.rtb.get_position(i) - fan::vec2(longest, -(base->gui.rtb.get_size(i).y * 0.5 - base->gui.tr.get_text_size(base->gui.tr.get_text(i), font_size).y * 0.5)));
+					y += base->gui.rtb.get_size(i).y + 1;
+				}
+
+				base->gui.rtb.set_position(3, base->gui.nowhere);
+
+				base->gui.tr.set_position(3, base->gui.nowhere);
+				base->gui.tr.set_position(4, base->gui.nowhere);
+
+				base->gui.boxes.set_box_color(i, fan::colors::purple - 0.3);
+				base->gui.boxes.set_selected(i);
+
+				fan_2d::gui::current_focus[base->gui.window.get_handle()] = base->gui.rtb.get_focus_id(0);
+				base->gui.rtb.set_cursor_visible(0);
+				base->gui.rtb.set_focus_end(5);
+				break;
+			}
+			case 3:{
 				auto selected = base->gui.boxes.get_selected();
 				switch(selected){
 					case 0:{
+						
+						break;
+					}
+					case 1:{
+						uint16_t port = std::stoi(base->gui.rtb.get_line(0, 0));
+						uint64_t secret = std::stoi(base->gui.rtb.get_line(1, 0));
+						uint32_t fps = std::stoi(base->gui.rtb.get_line(2, 0));
+						uint32_t rate = std::stoi(base->gui.rtb.get_line(3, 0));
+
+						VAS_node_t node = com_grab(base, port, secret, fps, rate);
+						assert(node != (VAS_node_t)-1);
+
+						break;
+					}
+					case 2:{
 						uint8_t sip[4];
 						uint_t pi = 0;
 
@@ -749,19 +812,8 @@ void run(base_t* base){
 						net_addr.port = std::stoi(base->gui.rtb.get_line(1, 0));
 						net_addr.ip = *(uint32_t*)sip;
 
-						bool r = command_connect(base, net_addr, secret);
+						bool r = com_view(base, net_addr, secret);
 						assert(!r);
-
-						break;
-					}
-					case 1:{
-						uint16_t port = std::stoi(base->gui.rtb.get_line(0, 0));
-						uint64_t secret = std::stoi(base->gui.rtb.get_line(1, 0));
-						uint32_t fps = std::stoi(base->gui.rtb.get_line(2, 0));
-						uint32_t rate = std::stoi(base->gui.rtb.get_line(3, 0));
-
-						VAS_node_t node = command_listen(base, port, secret, fps, rate);
-						assert(node != (VAS_node_t)-1);
 
 						break;
 					}
