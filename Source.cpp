@@ -622,7 +622,7 @@ void run(base_t* base){
 	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
 	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
 	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
-	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
+	base->gui.rtb.push_back(L"200000", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
 
 	base->gui.window.add_resize_callback([&] {
 		for (int i = 0; i < base->gui.tr.size(); i++) {
