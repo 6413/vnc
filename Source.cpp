@@ -14,7 +14,7 @@
 
 #include <fan/graphics.hpp>
 
-constexpr f_t font_size = 18;
+constexpr f_t font_size = 16;
 
 struct base_t{
 	EV_t listener;
@@ -29,20 +29,22 @@ struct base_t{
 
 		static constexpr fan::vec2 box_size{ 200, font_size };
 		static constexpr fan::vec2 border_size{ 20, 10 };
-		static constexpr fan::vec2 text_box_size{ 400, font_size * 1.5 };
 		static constexpr fan::vec2 nowhere{ -10000, -10000 };
 
-		gui() : window(fan::vec2(640, 400)), camera(&window), boxes(&camera), tr(&camera), rtb(&camera) { }
+		gui() : window(fan::vec2(480, 320)), camera(&window), boxes(&camera, fan_2d::gui::e_text_position::middle), tr(&camera), stb(&camera, fan_2d::gui::e_text_position::left) { }
 
 		fan::window window;
 		fan::camera camera;
 
 		fan_2d::gui::selectable_sized_text_box boxes;
 		fan_2d::gui::text_renderer tr;
-		fan_2d::gui::sized_text_box rtb;
+		fan_2d::gui::sized_text_box stb;
 
 		fan::vec2 line(uint32_t n){
 			return fan::vec2(50, 50.0 + (font_size * 1.5 * n) * tr.convert_font_size(font_size));
+		}
+		f64_t line2(uint32_t n){
+			return font_size * n;
 		}
 		fan::vec2 button(uint32_t n){
 			n++;
@@ -50,6 +52,24 @@ struct base_t{
 			bottom_center.x /= 2;
 			fan::vec2ui r = bottom_center - fan::cast<uint_t>(fan::vec2(box_size.x / 2, (box_size.y * n) + n * (border_size.y + 1)));
 			return r;
+		}
+		void formBegin(){
+			stb.erase(0, stb.size());
+			tr.erase(0, tr.size());
+		}
+		void formPush(const wchar_t *str0, const fan::color color0, const wchar_t *str1, const fan::color color1){
+			tr.push_back(str0, 0, color0, font_size);
+			stb.push_back(str1, font_size, 0, fan::vec2(300, line2(1) * 1.2), 0, color1);
+		}
+		void formEnd(fan::vec2 pos){
+			f64_t longest = tr.get_longest_text() + 20;
+
+			for (int j = 0; j < tr.size(); j++) {
+				tr.set_position(j, pos);
+				stb.set_position(j, fan::vec2(pos.x + longest, pos.y));
+				stb.set_input_callback(j);
+				pos.y += line2(1) * 1.2;
+			}
 		}
 
 		EV_evt_t evt;
@@ -88,11 +108,11 @@ uint32_t server_secret_read_cb(NET_TCP_peer_t *peer, uint64_t *secret, uint8_t *
 }
 void init_server_secret(NET_TCP_t *tcp, uint64_t secret){
 	IO_print(FD_OUT, "server secret is 0x%llx\n", secret);
-	uint_t EXTid = NET_TCP_EXT_new(tcp, sizeof(secret), 1);
-	uint64_t *ssecret = (uint64_t *)NET_TCP_EXT_get_sockdata(tcp, EXTid);
+	NET_TCP_eid_t eid = NET_TCP_EXT_new(tcp, sizeof(secret), 1);
+	uint64_t *ssecret = (uint64_t *)NET_TCP_EXT_get_sockdata(tcp, eid);
 	*ssecret = secret;
-	NET_TCP_EXTcbadd(tcp, NET_TCP_oid_connstate_e, EXTid, (void *)server_secret_connstate_cb);
-	NET_TCP_EXTcbadd(tcp, NET_TCP_oid_read_e, EXTid, (void *)server_secret_read_cb);
+	NET_TCP_EXTcbadd(tcp, NET_TCP_oid_connstate_e, eid, (void *)server_secret_connstate_cb);
+	NET_TCP_EXTcbadd(tcp, NET_TCP_oid_read_e, eid, (void *)server_secret_read_cb);
 }
 uint32_t client_secret_connstate_cb(NET_TCP_peer_t *peer, void *sd, uint64_t *psecret, uint8_t flag){
 	if(!(flag & NET_TCP_connstate_succ_e)){
@@ -106,8 +126,8 @@ NET_TCP_eid_t init_client_secret(NET_TCP_t *tcp){
 	NET_TCP_EXTcbadd(tcp, NET_TCP_oid_connstate_e, eid, (void *)client_secret_connstate_cb);
 	return eid;
 }
-void init_client_secret_peerdata(NET_TCP_peer_t *peer, uint_t EXTid, uint64_t secret){
-	uint64_t *psecret = (uint64_t *)NET_TCP_EXT_get_peerdata(peer, EXTid);
+void init_client_secret_peerdata(NET_TCP_peer_t *peer, NET_TCP_eid_t eid, uint64_t secret){
+	uint64_t *psecret = (uint64_t *)NET_TCP_EXT_get_peerdata(peer, eid);
 	*psecret = secret;
 }
 
@@ -190,7 +210,7 @@ bool process_incoming_packet(
 	packet_cb_t cursor_cb,
 	packet_cb_t key_cb
 ){
-	begin_gt:
+begin_gt:
 	switch(ptype->type){
 		case PACKET_FRAME:{
 			switch(ptype->s.frame.round){
@@ -307,7 +327,6 @@ typedef struct{
 }com_grab_sockdata_t;
 typedef struct{
 	VAS_node_t node;
-
 	ptype_t ptype;
 	A_vec_t packet;
 }com_grab_peerdata_t;
@@ -369,11 +388,10 @@ uint32_t com_grab_connstate_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, co
 	return 0;
 }
 void com_grab_frame_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_grab_peerdata_t *pd){
-	
+
 }
 void com_grab_cursor_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_grab_peerdata_t *pd){
 	packet_cursor_t *cursor = (packet_cursor_t *)pd->packet.ptr;
-	IO_print(FD_OUT, "dürürüm %lu %lu\n", cursor->x, cursor->y);
 }
 void com_grab_key_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_grab_peerdata_t *pd){
 	packet_key_t *key = (packet_key_t *)pd->packet.ptr;
@@ -393,9 +411,6 @@ uint32_t com_grab_read_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_gra
 	);
 	assert(!r);
 	return 0;
-}
-void com_grab_init(base_t* base){
-	VAS_open(&base->net.tcp.server, sizeof(NET_TCP_t *));
 }
 
 typedef struct com_view_sockdata_t{
@@ -525,15 +540,101 @@ bool com_view_init(base_t* base){
 
 	init_tls(base->net.tcp.tcpview);
 	base->net.tcp.tcpview_secret_eid = init_client_secret(base->net.tcp.tcpview);
-	uint_t EXTid = NET_TCP_EXT_new(base->net.tcp.tcpview, sizeof(com_view_sockdata_t), sizeof(com_view_peerdata_t));
-	com_view_sockdata_t *sd = (com_view_sockdata_t *)NET_TCP_EXT_get_sockdata(base->net.tcp.tcpview, EXTid);
-	NET_TCP_EXTcbadd(base->net.tcp.tcpview, NET_TCP_oid_connstate_e, EXTid, (void *)com_view_connstate_cb);
-	NET_TCP_EXTcbadd(base->net.tcp.tcpview, NET_TCP_oid_read_e, EXTid, (void *)com_view_read_cb);
+	NET_TCP_eid_t eid = NET_TCP_EXT_new(base->net.tcp.tcpview, sizeof(com_view_sockdata_t), sizeof(com_view_peerdata_t));
+	com_view_sockdata_t *sd = (com_view_sockdata_t *)NET_TCP_EXT_get_sockdata(base->net.tcp.tcpview, eid);
+	NET_TCP_EXTcbadd(base->net.tcp.tcpview, NET_TCP_oid_connstate_e, eid, (void *)com_view_connstate_cb);
+	NET_TCP_EXTcbadd(base->net.tcp.tcpview, NET_TCP_oid_read_e, eid, (void *)com_view_read_cb);
 
 	return 0;
 }
 
-VAS_node_t com_redirect(base_t *base, uint16_t port, uint64_t secret, uint32_t framerate){
+typedef struct{
+	VAS_t peers;
+	NET_TCP_peer_t *main_peer;
+	struct{
+		av_packet_t *packet;
+		A_vec_t initialdata;
+	}av;
+}com_grabfrom_sockdata_t;
+typedef struct{
+	VAS_node_t node;
+	ptype_t ptype;
+	A_vec_t packet;
+}com_grabfrom_peerdata_t;
+uint32_t com_grabfrom_connstate_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd, uint8_t flag){
+	if(flag & NET_TCP_connstate_succ_e){
+		if(!sd->main_peer){
+			sd->main_peer = peer;
+			pd->ptype.type = PACKET_TOTAL;
+			pd->packet = A_vec(1);
+			IO_print(FD_OUT, "[+] main peer %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
+		}
+		else{
+			pd->ptype.type = PACKET_TOTAL;
+			pd->packet = A_vec(1);
+			pd->node = VAS_getnode_dst(&sd->peers);
+			*(NET_TCP_peer_t **)VAS_out(&sd->peers, pd->node) = peer;
+			send_packet_frame(peer, sd->av.initialdata.Current);
+			NET_TCP_qsend_ptr(peer, sd->av.initialdata.ptr, sd->av.initialdata.Current);
+			IO_print(FD_OUT, "[+] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
+		}
+	}
+	else do{
+		if(!(flag & NET_TCP_connstate_init_e)){
+			break;
+		}
+		if(peer == sd->main_peer){
+			IO_print(FD_OUT, "[-] main peer %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
+		}
+		else{
+			VAS_unlink(&sd->peers, pd->node);
+			IO_print(FD_OUT, "[-] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
+		}
+	}while(0);
+
+	return 0;
+}
+void com_grabfrom_frame_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd){
+	assert(!av_data_to_packet(sd->av.packet, pd->packet.ptr, pd->packet.Current));
+	if(sd->av.packet->flags & AV_PKT_FLAG_KEY){
+		sd->av.initialdata.Current = 0;
+		A_vec_pushbackn(&sd->av.initialdata, uint8_t, pd->packet.ptr, pd->packet.Current);
+	}
+}
+void com_grabfrom_cursor_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd){
+	if(peer == sd->main_peer){
+		return;
+	}
+	NET_TCP_qsend_ptr(sd->main_peer, pd->packet.ptr, pd->packet.Current);
+}
+void com_grabfrom_key_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd){
+	if(peer == sd->main_peer){
+		return;
+	}
+	NET_TCP_qsend_ptr(sd->main_peer, pd->packet.ptr, pd->packet.Current);
+}
+uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd, uint8_t **data, uint_t *size){
+	if(peer == sd->main_peer){
+		VAS_node_t inode = *VAS_road0(&sd->peers, sd->peers.src);
+		while(inode != sd->peers.dst){
+			NET_TCP_peer_t *npeer = *(NET_TCP_peer_t **)VAS_out(&sd->peers, inode);
+			NET_TCP_qsend_ptr(npeer, *data, *size);
+			inode = *VAS_road0(&sd->peers, inode);
+		}
+	}
+	bool r = process_incoming_packet(
+		peer,
+		sd,
+		pd,
+		*data,
+		*size,
+		&pd->ptype,
+		&pd->packet,
+		(packet_cb_t)com_grabfrom_frame_cb,
+		(packet_cb_t)com_grabfrom_cursor_cb,
+		(packet_cb_t)com_grabfrom_key_cb
+	);
+	assert(!r);
 	return 0;
 }
 
@@ -544,8 +645,6 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	*tcp = NET_TCP_alloc(&base->listener);
 	(*tcp)->ssrcaddr.port = port;
 
-	/* if listen is not possible lets know it earlier to avoid big cleanup */
-	/* we will call NET_TCP_listen1 in end of function */
 	if(NET_TCP_listen0(*tcp)){
 		NET_TCP_free(*tcp);
 		VAS_unlink(&base->net.tcp.server, node);
@@ -554,8 +653,8 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 
 	init_tls(*tcp);
 	init_server_secret(*tcp, secret);
-	uint_t EXTid = NET_TCP_EXT_new(*tcp, sizeof(com_grab_sockdata_t), sizeof(com_grab_peerdata_t));
-	com_grab_sockdata_t *sd = (com_grab_sockdata_t *)NET_TCP_EXT_get_sockdata(*tcp, EXTid);
+	NET_TCP_eid_t eid = NET_TCP_EXT_new(*tcp, sizeof(com_grab_sockdata_t), sizeof(com_grab_peerdata_t));
+	com_grab_sockdata_t *sd = (com_grab_sockdata_t *)NET_TCP_EXT_get_sockdata(*tcp, eid);
 
 	VAS_open(&sd->peers, sizeof(NET_TCP_peer_t *));
 
@@ -594,8 +693,8 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	sd->evt = EV_evt((f64_t)1 / framerate, com_grab_encode_cb);
 	EV_evtstart(&base->listener, &sd->evt);
 
-	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, EXTid, (void *)com_grab_connstate_cb);
-	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, EXTid, (void *)com_grab_read_cb);
+	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grab_connstate_cb);
+	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grab_read_cb);
 
 	assert(!NET_TCP_listen1(*tcp));
 
@@ -614,15 +713,49 @@ bool com_view(base_t *base, NET_addr_t addr, uint64_t secret){
 	return 0;
 }
 
+VAS_node_t com_grabfrom(base_t *base, uint16_t port, uint64_t secret){
+	VAS_node_t node = VAS_getnode_dst(&base->net.tcp.server);
+	NET_TCP_t **tcp = (NET_TCP_t **)VAS_out(&base->net.tcp.server, node);
+
+	*tcp = NET_TCP_alloc(&base->listener);
+	(*tcp)->ssrcaddr.port = port;
+
+	if(NET_TCP_listen0(*tcp)){
+		NET_TCP_free(*tcp);
+		VAS_unlink(&base->net.tcp.server, node);
+		return (VAS_node_t)-1;
+	}
+
+	init_tls(*tcp);
+	init_server_secret(*tcp, secret);
+	NET_TCP_eid_t eid = NET_TCP_EXT_new(*tcp, sizeof(com_grabfrom_sockdata_t), sizeof(com_grabfrom_peerdata_t));
+	com_grabfrom_sockdata_t *sd = (com_grabfrom_sockdata_t *)NET_TCP_EXT_get_sockdata(*tcp, eid);
+
+	VAS_open(&sd->peers, sizeof(NET_TCP_peer_t *));
+
+	sd->main_peer = 0;
+
+	sd->av.packet = av_packet_open();
+	assert(sd->av.packet);
+	sd->av.initialdata = A_vec(1);
+
+	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grabfrom_connstate_cb);
+	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grabfrom_read_cb);
+
+	assert(!NET_TCP_listen1(*tcp));
+
+	return node;
+}
+
 void gui_main_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
 	base_t* base = OFFSETLESS(evt, base_t, gui.evt);
 	base->gui.window.execute(0, [&]{
 		if (base->gui.window.key_press(fan::mouse_left)) {
 			bool found = false;
 
-			for (int i = 0; i < base->gui.rtb.size(); i++) {
-				if (base->gui.rtb.inside(i)) {
-					base->gui.rtb.get_mouse_cursor(i, base->gui.rtb.get_position(i), base->gui.rtb.get_size(i));
+			for (int i = 0; i < base->gui.stb.size(); i++) {
+				if (base->gui.stb.inside(i)) {
+					base->gui.stb.get_mouse_cursor(i, base->gui.stb.get_position(i), base->gui.stb.get_size(i));
 					found = true;
 				}
 			}
@@ -632,7 +765,7 @@ void gui_main_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
 			}
 		}
 
-		base->gui.rtb.draw();
+		base->gui.stb.draw();
 		base->gui.boxes.draw();
 		base->gui.tr.draw();
 	});
@@ -643,7 +776,7 @@ void gui_main_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
 void run(base_t* base){
 	EV_open(&base->listener);
 
-	com_grab_init(base);
+	VAS_open(&base->net.tcp.server, sizeof(NET_TCP_t *));
 	com_view_init(base);
 
 	base->gui.window.set_vsync(true);
@@ -654,22 +787,11 @@ void run(base_t* base){
 		PR_exit(0);
 	});
 
-	base->gui.boxes.push_back(L"redirect", font_size, base->gui.button(4), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
-	base->gui.boxes.push_back(L"grab", font_size, base->gui.button(3), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
-	base->gui.boxes.push_back(L"view", font_size, base->gui.button(2), base->gui.box_size, base->gui.border_size, fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"grab", font_size, base->gui.button(5), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"view", font_size, base->gui.button(4), base->gui.box_size, base->gui.border_size, fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"grab from", font_size, base->gui.button(3), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
+	base->gui.boxes.push_back(L"grab to", font_size, base->gui.button(2), base->gui.box_size, base->gui.border_size , fan::colors::purple - 0.4);
 	base->gui.boxes.push_back(L"start", font_size, base->gui.button(0), base->gui.box_size, base->gui.border_size, fan::colors::purple - 0.4);
-
-
-	base->gui.tr.push_back(L"Ip: ", base->gui.nowhere, fan::colors::white, font_size);
-	base->gui.tr.push_back(L"Port: ", base->gui.nowhere, fan::colors::white, font_size);
-	base->gui.tr.push_back(L"Secret: ", base->gui.nowhere, fan::colors::white, font_size);
-	base->gui.tr.push_back(L"FPS: ", base->gui.nowhere, fan::colors::white, font_size);
-	base->gui.tr.push_back(L"Rate: ", base->gui.nowhere, fan::colors::white, font_size);
-
-	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
-	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
-	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
-	base->gui.rtb.push_back(L"", font_size, base->gui.nowhere, base->gui.text_box_size, base->gui.border_size, fan::colors::cyan - 0.9);
 
 	base->gui.window.add_resize_callback([&] {
 		for (int i = 0; i < base->gui.tr.size(); i++) {
@@ -678,12 +800,7 @@ void run(base_t* base){
 		}
 	});
 
-	base->gui.rtb.set_input_callback(0);
-	base->gui.rtb.set_input_callback(1);
-	base->gui.rtb.set_input_callback(2);
-	base->gui.rtb.set_input_callback(3);
-
-	base->gui.boxes.on_click([&] (uint_t i) {
+	base->gui.boxes.on_click([&](uint_t i) {
 		auto selected = base->gui.boxes.get_selected();
 
 		if (selected != fan::uninitialized) {
@@ -692,129 +809,100 @@ void run(base_t* base){
 
 		switch (i) {
 			case 0:{
-				f_t longest = base->gui.tr.get_longest_text();
-
-				f_t y = 0;
-
-				base->gui.rtb.set_text(0, L"8081");
-				base->gui.rtb.set_text(1, L"123");
-
-				base->gui.tr.set_position(0, base->gui.nowhere);
-				base->gui.tr.set_position(2, base->gui.nowhere);
-				base->gui.tr.set_position(3, base->gui.nowhere);
-				base->gui.tr.set_position(4, base->gui.nowhere);
-
-				base->gui.rtb.set_position(3, base->gui.nowhere);
-				base->gui.rtb.set_position(2, base->gui.nowhere);
-
-				for (int i = 0; i < 2; i++) {
-					base->gui.rtb.set_position(i, base->gui.line(0) + fan::vec2(longest, y));
-					base->gui.tr.set_position(i + 1, base->gui.rtb.get_position(i) - fan::vec2(longest, -(base->gui.rtb.get_size(i).y * 0.5 - base->gui.tr.get_text_size(base->gui.tr.get_text(i + 1), font_size).y * 0.5)));
-					y += base->gui.rtb.get_size(i).y + 1;
-				}
+				base->gui.formBegin();
+				base->gui.formPush(L"Port:", fan::colors::white, L"8081", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Secret:", fan::colors::white, L"123", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"FPS:", fan::colors::white, L"10", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Rate:", fan::colors::white, L"200000", fan::colors::cyan - 0.9);
+				base->gui.formEnd(0);
 
 				base->gui.boxes.set_box_color(i, fan::colors::purple - 0.3);
 				base->gui.boxes.set_selected(i);
-
-				fan_2d::gui::current_focus[base->gui.window.get_handle()] = base->gui.rtb.get_focus_id(0);
-				base->gui.rtb.set_cursor_visible(0);
-				base->gui.rtb.set_focus_end(3);
 
 				break;
 			}
 			case 1:{
-				base->gui.rtb.set_text(0, L"8081");
-				base->gui.rtb.set_text(1, L"123");
-				base->gui.rtb.set_text(2, L"10");
-				base->gui.rtb.set_text(3, L"200000");
-
-
-				f_t longest = base->gui.tr.get_longest_text();
-
-				f_t y = 0;
-
-				base->gui.tr.set_position(0, base->gui.nowhere);
-
-				for (int i = 0; i < 4; i++) {
-					base->gui.rtb.set_position(i, base->gui.line(0) + fan::vec2(longest, y));
-					base->gui.tr.set_position(i + 1, base->gui.rtb.get_position(i) - fan::vec2(longest, -(base->gui.rtb.get_size(i).y * 0.5 - base->gui.tr.get_text_size(base->gui.tr.get_text(i + 1), font_size).y * 0.5)));
-					y += base->gui.rtb.get_size(i).y + 1;
-				}
+				base->gui.formBegin();
+				base->gui.formPush(L"Ip:", fan::colors::white, L"127.0.0.1", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Port:", fan::colors::white, L"8081", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Secret:", fan::colors::white, L"123", fan::colors::cyan - 0.9);
+				base->gui.formEnd(0);
 
 				base->gui.boxes.set_box_color(i, fan::colors::purple - 0.3);
 				base->gui.boxes.set_selected(i);
-
-				fan_2d::gui::current_focus[base->gui.window.get_handle()] = base->gui.rtb.get_focus_id(0);
-				base->gui.rtb.set_cursor_visible(0);
-				base->gui.rtb.set_focus_end(4);
 
 				break;
 			}
 			case 2:{
-				base->gui.rtb.set_text(0, L"127.0.0.1");
-				base->gui.rtb.set_text(1, L"8081");
-				base->gui.rtb.set_text(2, L"123");
-
-				f_t longest = base->gui.tr.get_longest_text();
-
-				f_t y = 0;
-
-				for (int i = 0; i < 3; i++) {
-					base->gui.rtb.set_position(i, base->gui.line(0) + fan::vec2(longest, y));
-					base->gui.tr.set_position(i, base->gui.rtb.get_position(i) - fan::vec2(longest, -(base->gui.rtb.get_size(i).y * 0.5 - base->gui.tr.get_text_size(base->gui.tr.get_text(i), font_size).y * 0.5)));
-					y += base->gui.rtb.get_size(i).y + 1;
-				}
-
-				base->gui.rtb.set_position(3, base->gui.nowhere);
-
-				base->gui.tr.set_position(3, base->gui.nowhere);
-				base->gui.tr.set_position(4, base->gui.nowhere);
+				base->gui.formBegin();
+				base->gui.formPush(L"Port:", fan::colors::white, L"8081", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Secret:", fan::colors::white, L"123", fan::colors::cyan - 0.9);
+				base->gui.formEnd(0);
 
 				base->gui.boxes.set_box_color(i, fan::colors::purple - 0.3);
 				base->gui.boxes.set_selected(i);
 
-				fan_2d::gui::current_focus[base->gui.window.get_handle()] = base->gui.rtb.get_focus_id(0);
-				base->gui.rtb.set_cursor_visible(0);
-				base->gui.rtb.set_focus_end(5);
 				break;
 			}
 			case 3:{
+				base->gui.formBegin();
+				base->gui.formPush(L"IO:", fan::colors::white, L"127.0.0.1", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Port:", fan::colors::white, L"8081", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Secret:", fan::colors::white, L"123", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"FPS:", fan::colors::white, L"10", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"Rate:", fan::colors::white, L"200000", fan::colors::cyan - 0.9);
+				base->gui.formEnd(0);
+
+				base->gui.boxes.set_box_color(i, fan::colors::purple - 0.3);
+				base->gui.boxes.set_selected(i);
+
+				break;
+			}
+			case 4:{
 				auto selected = base->gui.boxes.get_selected();
 				switch(selected){
 					case 0:{
-						
-						break;
-					}
-					case 1:{
-						uint16_t port = std::stoi(base->gui.rtb.get_line(0, 0));
-						uint64_t secret = std::stoi(base->gui.rtb.get_line(1, 0));
-						uint32_t fps = std::stoi(base->gui.rtb.get_line(2, 0));
-						uint32_t rate = std::stoi(base->gui.rtb.get_line(3, 0));
+						uint16_t port = std::stoi(base->gui.stb.get_line(0, 0));
+						uint64_t secret = std::stoi(base->gui.stb.get_line(1, 0));
+						uint32_t fps = std::stoi(base->gui.stb.get_line(2, 0));
+						uint32_t rate = std::stoi(base->gui.stb.get_line(3, 0));
 
 						VAS_node_t node = com_grab(base, port, secret, fps, rate);
 						assert(node != (VAS_node_t)-1);
 
 						break;
 					}
-					case 2:{
+					case 1:{
 						uint8_t sip[4];
 						uint_t pi = 0;
 
-						auto wstr = base->gui.rtb.get_line(0, 0);
+						auto wstr = base->gui.stb.get_line(0, 0);
 
 						if (STR_rscancc(std::string(wstr.begin(), wstr.end()).c_str(), &pi, "(ov8u).(ov8u).(ov8u).(ov8u)", &sip[3], &sip[2], &sip[1], &sip[0])){
 							throw std::runtime_error("failed to parse ip");
 						}
 
-						uint64_t secret = std::stoi(base->gui.rtb.get_line(2, 0));
+						uint64_t secret = std::stoi(base->gui.stb.get_line(2, 0));
 
 						NET_addr_t net_addr;
-						net_addr.port = std::stoi(base->gui.rtb.get_line(1, 0));
+						net_addr.port = std::stoi(base->gui.stb.get_line(1, 0));
 						net_addr.ip = *(uint32_t*)sip;
 
 						bool r = com_view(base, net_addr, secret);
 						assert(!r);
 
+						break;
+					}
+					case 2:{
+						uint16_t port = std::stoi(base->gui.stb.get_line(0, 0));
+						uint64_t secret = std::stoi(base->gui.stb.get_line(1, 0));
+
+						VAS_node_t node = com_grabfrom(base, port, secret);
+						assert(node != (VAS_node_t)-1);
+
+						break;
+					}
+					case 3:{
 						break;
 					}
 				}
