@@ -1,5 +1,5 @@
-#version 330 core
-in vec2 texture_coordinates;
+#version 140
+varying vec2 texture_coordinates;
 
 out vec4 sprite_color;
 
