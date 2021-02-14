@@ -43,10 +43,7 @@ struct base_t{
 		fan_2d::gui::text_renderer tr;
 		fan_2d::gui::sized_text_box stb;
 
-		fan::vec2 line(uint32_t n){
-			return fan::vec2(50, 50.0 + (font_size * 1.5 * n) * tr.convert_font_size(font_size));
-		}
-		f64_t line2(uint32_t n){
+		f64_t line(uint32_t n){
 			return font_size * n;
 		}
 		fan::vec2 button(uint32_t n){
@@ -62,7 +59,7 @@ struct base_t{
 		}
 		void formPush(const wchar_t *str0, const fan::color color0, const wchar_t *str1, const fan::color color1){
 			tr.push_back(str0, 0, color0, font_size);
-			stb.push_back(str1, font_size, 0, fan::vec2(300, line2(1) * 1.2), 0, color1);
+			stb.push_back(str1, font_size, 0, fan::vec2(300, line(1) * 1.1 + 1), 0, color1);
 		}
 		void formEnd(fan::vec2 pos){
 			f64_t longest = tr.get_longest_text() + 20;
@@ -71,7 +68,7 @@ struct base_t{
 				tr.set_position(j, pos);
 				stb.set_position(j, fan::vec2(pos.x + longest, pos.y));
 				stb.set_input_callback(j);
-				pos.y += line2(1) * 1.2;
+				pos.y += line(1) * 1.1 + 1;
 			}
 		}
 
@@ -605,6 +602,7 @@ bool com_view_init(base_t* base){
 
 typedef struct{
 	VAS_t peers;
+	NET_TCP_eid_t eid;
 	NET_TCP_peer_t *main_peer;
 	struct{
 		A_vec_t initialdata;
@@ -612,24 +610,23 @@ typedef struct{
 }com_grabfrom_sockdata_t;
 typedef struct{
 	VAS_node_t node;
+	bool state;
 	ptype_t ptype;
 	A_vec_t packet;
 }com_grabfrom_peerdata_t;
 uint32_t com_grabfrom_connstate_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
+		pd->ptype.type = PACKET_TOTAL;
+		pd->packet = A_vec(1);
 		if(!sd->main_peer){
 			sd->main_peer = peer;
-			pd->ptype.type = PACKET_TOTAL;
-			pd->packet = A_vec(1);
 			IO_print(FD_OUT, "[+] main peer %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
 		}
 		else{
-			pd->ptype.type = PACKET_TOTAL;
-			pd->packet = A_vec(1);
 			pd->node = VAS_getnode_dst(&sd->peers);
 			*(NET_TCP_peer_t **)VAS_out(&sd->peers, pd->node) = peer;
 			if(sd->av.initialdata.Current){
-				send_packet_frame(peer, sd->av.initialdata.Current);
+				send_packet_keyframe(peer, sd->av.initialdata.Current);
 				NET_TCP_qsend_ptr(peer, sd->av.initialdata.ptr, sd->av.initialdata.Current);
 			}
 			IO_print(FD_OUT, "[+] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
@@ -671,8 +668,19 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 		VAS_node_t inode = *VAS_road0(&sd->peers, sd->peers.src);
 		while(inode != sd->peers.dst){
 			NET_TCP_peer_t *npeer = *(NET_TCP_peer_t **)VAS_out(&sd->peers, inode);
-			NET_TCP_qsend_ptr(npeer, *data, *size);
-			inode = *VAS_road0(&sd->peers, inode);
+			com_grabfrom_peerdata_t *npd = (com_grabfrom_peerdata_t *)NET_TCP_EXT_get_peerdata(npeer, sd->eid);
+			if(npd->state){
+				NET_TCP_qsend_ptr(npeer, *data, *size);
+				inode = *VAS_road0(&sd->peers, inode);
+			}
+			else do{
+				if(pd->packet.Current){
+					break;
+				}
+				npd->state = 1;
+				NET_TCP_qsend_ptr(npeer, *data, *size);
+				inode = *VAS_road0(&sd->peers, inode);
+			}while(0);
 		}
 	}
 	bool r = process_incoming_packet(
@@ -887,6 +895,7 @@ VAS_node_t com_grabfrom(base_t *base, uint16_t port, uint64_t secret){
 	init_server_secret(*tcp, secret);
 	NET_TCP_eid_t eid = NET_TCP_EXT_new(*tcp, sizeof(com_grabfrom_sockdata_t), sizeof(com_grabfrom_peerdata_t));
 	com_grabfrom_sockdata_t *sd = (com_grabfrom_sockdata_t *)NET_TCP_EXT_get_sockdata(*tcp, eid);
+	sd->eid = eid;
 
 	VAS_open(&sd->peers, sizeof(NET_TCP_peer_t *));
 
