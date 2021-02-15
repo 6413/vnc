@@ -353,6 +353,7 @@ begin_gt:
 					break;
 				}
 				default:{
+					IO_print(FD_OUT, "weird byte: %lu\n", ptype->type);
 					assert(0);
 				}
 			}
@@ -529,7 +530,6 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 		});
 
 		pd->window->add_key_callback(fan::key_escape, [&]{
-			pd->window->close();
 			NET_TCP_closehard(peer);
 		});
 
@@ -655,13 +655,11 @@ void com_grabfrom_cursor_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, c
 	if(peer == sd->main_peer){
 		return;
 	}
-	NET_TCP_qsend_ptr(sd->main_peer, pd->packet.ptr, pd->packet.Current);
 }
 void com_grabfrom_key_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd){
 	if(peer == sd->main_peer){
 		return;
 	}
-	NET_TCP_qsend_ptr(sd->main_peer, pd->packet.ptr, pd->packet.Current);
 }
 uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd, uint8_t **data, uint_t *size){
 	if(peer == sd->main_peer){
@@ -671,7 +669,6 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 			com_grabfrom_peerdata_t *npd = (com_grabfrom_peerdata_t *)NET_TCP_EXT_get_peerdata(npeer, sd->eid);
 			if(npd->state){
 				NET_TCP_qsend_ptr(npeer, *data, *size);
-				inode = *VAS_road0(&sd->peers, inode);
 			}
 			else do{
 				if(pd->packet.Current){
@@ -679,8 +676,8 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 				}
 				npd->state = 1;
 				NET_TCP_qsend_ptr(npeer, *data, *size);
-				inode = *VAS_road0(&sd->peers, inode);
 			}while(0);
+			inode = *VAS_road0(&sd->peers, inode);
 		}
 	}
 	bool r = process_incoming_packet(
