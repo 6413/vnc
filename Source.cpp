@@ -87,8 +87,8 @@ uint32_t server_secret_connstate_cb(NET_TCP_peer_t *peer, uint64_t *secret, uint
 	return NET_TCP_EXT_dontgo_e;
 }
 uint32_t server_secret_read_cb(NET_TCP_peer_t *peer, uint64_t *secret, uint8_t *pd, uint8_t **data, uint_t *size){
-	if(!*pd){
-		if(*size != sizeof(*secret)){
+	if(!*pd)do{
+		if(*size < sizeof(*secret)){
 			IO_print(FD_OUT, "[!] %08x%04x sent wrong sized secret\n", peer->sdstaddr.ip, peer->sdstaddr.port);
 			return NET_TCP_EXT_abconn_e;
 		}
@@ -102,8 +102,13 @@ uint32_t server_secret_read_cb(NET_TCP_peer_t *peer, uint64_t *secret, uint8_t *
 		if(flag & NET_TCP_EXT_abconn_e){
 			NET_TCP_closehard(peer);
 		}
+		if(*size >= sizeof(*secret)){
+			*size -= sizeof(*secret);
+			*data += sizeof(*secret);
+			break;
+		}
 		return NET_TCP_EXT_dontgo_e;
-	}
+	}while(0);
 	return 0;
 }
 void init_server_secret(NET_TCP_t *tcp, uint64_t secret){
