@@ -12,7 +12,7 @@
 #include <WITCH/NET/TCP/TLS/TLS.h>
 #include <WITCH/ETC/av.h>
 
-#include <fan/graphics.hpp>
+#include <fan/graphics/graphics.hpp>
 
 constexpr f_t font_size = 16;
 
@@ -59,7 +59,7 @@ struct base_t{
 		}
 		void formPush(const wchar_t *str0, const fan::color color0, const wchar_t *str1, const fan::color color1){
 			tr.push_back(str0, 0, color0, font_size);
-			stb.push_back(str1, font_size, 0, fan::vec2(300, line(1) * 1.1 + 1), 0, color1);
+			stb.push_back(str1, font_size, 0, fan::vec2(300, line(1)), 0, color1);
 		}
 		void formEnd(fan::vec2 pos){
 			f64_t longest = tr.get_longest_text() + 20;
@@ -519,14 +519,15 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 		pd->av.packet = av_packet_open();
 		assert(pd->av.packet);
 
-		pd->tmain = EV_evt(.001, com_view_main_cb);
+		pd->tmain = EV_evt(.001, (EV_evcb_t)com_view_main_cb);
 		EV_evtstart(peer->parent->listener, &pd->tmain);
 
 		pd->window = new fan::window();
+		pd->window->auto_close(false);
 		pd->camera = new fan::camera(pd->window);
 
-		pd->window->add_mouse_move_callback([pd, peer]{
-			fan::vec2 position = pd->window->get_mouse_position();
+		pd->window->add_mouse_move_callback([peer](fan::window* window){
+			fan::vec2 position = window->get_mouse_position();
 			send_packet_cursor(peer, position.x, position.y);
 		});
 
@@ -551,6 +552,7 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 		if(!(flag & NET_TCP_connstate_init_e)){
 			break;
 		}
+		pd->window->destroy_window();
 		A_vec_free(&pd->packet);
 		EV_evtstop(peer->parent->listener, &pd->tmain);
 	}while(0);
@@ -857,7 +859,7 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	}
 	assert(rinread >= 0);
 
-	sd->evt = EV_evt((f64_t)1 / framerate, com_grab_encode_cb);
+	sd->evt = EV_evt((f64_t)1 / framerate, (EV_evcb_t)com_grab_encode_cb);
 	EV_evtstart(&base->listener, &sd->evt);
 
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grab_connstate_cb);
@@ -950,7 +952,7 @@ bool com_grabto(base_t *base, NET_addr_t addr, uint64_t secret, uint32_t framera
 	pd->ptype.type = PACKET_TOTAL;
 	pd->packet = A_vec(1);
 
-	pd->evt = EV_evt((f64_t)1 / framerate, com_grabto_encode_cb);
+	pd->evt = EV_evt((f64_t)1 / framerate, (EV_evcb_t)com_grabto_encode_cb);
 
 	return 0;
 }
@@ -1142,7 +1144,7 @@ void run(base_t* base){
 		}
 	});
 
-	base->gui.evt = EV_evt(.001, gui_main_cb);
+	base->gui.evt = EV_evt(.001, (EV_evcb_t)gui_main_cb);
 	EV_evtstart(&base->listener, &base->gui.evt);
 
 	EV_start(&base->listener);
