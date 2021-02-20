@@ -503,7 +503,7 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 	if(flag & NET_TCP_connstate_succ_e){
 		pd->ptype.type = PACKET_TOTAL;
 		pd->packet = A_vec(1, av_resize);
-		pd->pixmap = A_vec(1);
+		pd->pixmap = A_vec(1, av_resize);
 
 		pd->av.codec = av_decoder_open(AV_CODEC_ID_H264);
 		assert(pd->av.codec);
