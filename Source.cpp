@@ -65,10 +65,10 @@ struct base_t{
 			f64_t longest = tr.get_longest_text() + 20;
 
 			for (int j = 0; j < tr.size(); j++) {
-				tr.set_position(j, pos);
+				tr.set_position(j, stb.get_text_position(j, pos));
 				stb.set_position(j, fan::vec2(pos.x + longest, pos.y));
 				stb.set_input_callback(j);
-				pos.y += line(1) * 1.1 + 1;
+				pos.y += stb.get_size(j).y + 1;
 			}
 		}
 

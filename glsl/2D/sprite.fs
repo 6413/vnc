@@ -1,4 +1,5 @@
-#version 140
+#version 130
+
 varying vec2 texture_coordinates;
 
 out vec4 sprite_color;
@@ -8,7 +9,5 @@ uniform float transparency;
 
 void main()
 {
-    vec4 t = texture(texture_sampler, texture_coordinates);
-    sprite_color = vec4(t.xyz, 1);
-   
+    sprite_color = texture(texture_sampler, texture_coordinates);
 }

@@ -38,5 +38,5 @@ void main()
     for(int i = 0; i < 9; i++)
         col += sampleTex[i] * kernel[i];
     
-    FragColor = vec4(texture(texture_sampler, texture_coordinates).rgb, 1.0);
+    FragColor = vec4(texture(texture_sampler, texture_coordinates).rgb, 0.1);
 }  
