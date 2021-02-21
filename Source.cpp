@@ -702,21 +702,37 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 			}while(0);
 			inode = *VAS_road0(&sd->peers, inode);
 		}
+		bool r = process_incoming_packet(
+			peer,
+			sd,
+			0,
+			*data,
+			*size,
+			&sd->ptype,
+			&sd->packet,
+			(packet_cb_t)EMPTY_FUNCTION,
+			(packet_cb_t)com_grabfrom_keyframe_cb,
+			(packet_cb_t)com_grabfrom_cursor_cb,
+			(packet_cb_t)com_grabfrom_key_cb
+		);
+		assert(!r);
 	}
-	bool r = process_incoming_packet(
-		peer,
-		sd,
-		0,
-		*data,
-		*size,
-		&sd->ptype,
-		&sd->packet,
-		(packet_cb_t)EMPTY_FUNCTION,
-		(packet_cb_t)com_grabfrom_keyframe_cb,
-		(packet_cb_t)com_grabfrom_cursor_cb,
-		(packet_cb_t)com_grabfrom_key_cb
-	);
-	assert(!r);
+	else{
+		bool r = process_incoming_packet(
+			peer,
+			sd,
+			pd,
+			*data,
+			*size,
+			&pd->ptype,
+			&pd->packet,
+			(packet_cb_t)EMPTY_FUNCTION,
+			(packet_cb_t)com_grabfrom_keyframe_cb,
+			(packet_cb_t)com_grabfrom_cursor_cb,
+			(packet_cb_t)com_grabfrom_key_cb
+		);
+		assert(!r);
+	}
 	return 0;
 }
 
