@@ -620,6 +620,8 @@ typedef struct{
 	struct{
 		A_vec_t initialdata;
 	}av;
+	ptype_t ptype;
+	A_vec_t packet;
 }com_grabfrom_sockdata_t;
 typedef struct{
 	VAS_node_t node;
@@ -638,6 +640,7 @@ uint32_t com_grabfrom_connstate_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t
 		else{
 			IO_print(FD_OUT, "[+] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
 			pd->node = VAS_getnode_dst(&sd->peers);
+			pd->state = 0;
 			*(NET_TCP_peer_t **)VAS_out(&sd->peers, pd->node) = peer;
 			if(sd->av.initialdata.Current){
 				send_packet_keyframe(peer, sd->av.initialdata.Current);
@@ -660,19 +663,24 @@ uint32_t com_grabfrom_connstate_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t
 
 	return 0;
 }
-void com_grabfrom_keyframe_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd){
+void com_grabfrom_keyframe_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, void *pd){
+	if(peer != sd->main_peer){
+		return;
+	}
 	sd->av.initialdata.Current = 0;
-	A_vec_pushbackn(&sd->av.initialdata, uint8_t, pd->packet.ptr, pd->packet.Current);
+	A_vec_pushbackn(&sd->av.initialdata, uint8_t, sd->packet.ptr, sd->packet.Current);
 }
-void com_grabfrom_cursor_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd){
+void com_grabfrom_cursor_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, void *pd){
 	if(peer == sd->main_peer){
 		return;
 	}
+	/* TODO send it to main peer */
 }
-void com_grabfrom_key_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd){
+void com_grabfrom_key_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, void *pd){
 	if(peer == sd->main_peer){
 		return;
 	}
+	/* TODO send it to main peer */
 }
 uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd, uint8_t **data, uint_t *size){
 	if(peer == sd->main_peer){
@@ -684,7 +692,9 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 				NET_TCP_qsend_ptr(npeer, *data, *size);
 			}
 			else do{
-				if(pd->packet.Current){
+				/* this means this packet is first of rest */
+				/* because ptype still didnt assigned */
+				if(sd->ptype.type != PACKET_TOTAL){
 					break;
 				}
 				npd->state = 1;
@@ -696,11 +706,11 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 	bool r = process_incoming_packet(
 		peer,
 		sd,
-		pd,
+		0,
 		*data,
 		*size,
-		&pd->ptype,
-		&pd->packet,
+		&sd->ptype,
+		&sd->packet,
 		(packet_cb_t)EMPTY_FUNCTION,
 		(packet_cb_t)com_grabfrom_keyframe_cb,
 		(packet_cb_t)com_grabfrom_cursor_cb,
@@ -912,6 +922,9 @@ VAS_node_t com_grabfrom(base_t *base, uint16_t port, uint64_t secret){
 	sd->main_peer = 0;
 
 	sd->av.initialdata = A_vec(1);
+
+	sd->ptype.type = PACKET_TOTAL;
+	sd->packet = A_vec(1);
 
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grabfrom_connstate_cb);
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grabfrom_read_cb);
