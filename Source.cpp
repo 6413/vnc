@@ -654,6 +654,7 @@ uint32_t com_grabfrom_connstate_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t
 		}
 		if(peer == sd->main_peer){
 			IO_print(FD_OUT, "[-] main peer %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
+			sd->main_peer = 0;
 		}
 		else{
 			IO_print(FD_OUT, "[-] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
