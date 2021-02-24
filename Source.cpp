@@ -72,7 +72,7 @@ struct base_t{
 			}
 		}
 
-		EV_evt_t evt;
+		EV_ev_t_t evt;
 	}gui;
 };
 
@@ -383,14 +383,14 @@ typedef struct{
 		uint64_t last;
 		uint32_t fps;
 	}av;
-	EV_evt_t evt;
+	EV_ev_t_t evt;
 }com_grab_sockdata_t;
 typedef struct{
 	VAS_node_t node;
 	ptype_t ptype;
 	A_vec_t packet;
 }com_grab_peerdata_t;
-void com_grab_encode_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
+void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	uint64_t t0 = T_nowi();
 	com_grab_sockdata_t *sd = OFFSETLESS(evt, com_grab_sockdata_t, evt);
 	uint8_t *pixelbuf = IO_SCR_read(&sd->scr);
@@ -484,20 +484,29 @@ struct com_view_peerdata_t{
 		av_packet_t *packet;
 	}av;
 
-	EV_evt_t tmain;
+	struct gui {
+		gui() : window(), camera(&window), image(&camera) {}
 
-	fan::window* window;
-	fan::camera* camera;
-	fan_2d::sprite* image;
+		fan::window window;
+		fan::camera camera;
+		fan_2d::sprite image;
+
+		bool close;
+	}*gui;
+
+	EV_tp_t guitp;
 };
-void com_view_main_cb(EV_t* listener, EV_evt_t* evt, uint32_t flag){
-	com_view_peerdata_t *pd = OFFSETLESS(evt, com_view_peerdata_t, tmain);
+void com_view_main_cb(EV_t *listener, EV_tp_t *guitp){
+	com_view_peerdata_t *pd = OFFSETLESS(guitp, com_view_peerdata_t, guitp);
 
-	pd->window->execute(0, [&]{
-		pd->window->get_fps();
-		pd->image->draw();
-	});
-	//fan::window::handle_events();
+	while(!pd->gui->close){
+		pd->gui->window.execute(0, [&]{
+			pd->gui->window.get_fps();
+			pd->gui->image.draw();
+		});
+	}
+
+	delete pd->gui;
 }
 uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata_t* pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
@@ -515,31 +524,31 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 		pd->av.packet = av_packet_open();
 		assert(pd->av.packet);
 
-		pd->tmain = EV_evt(.001, (EV_evcb_t)com_view_main_cb);
-		EV_evtstart(peer->parent->listener, &pd->tmain);
-
-		pd->window = new fan::window();
-		pd->window->auto_close(false);
-		pd->camera = new fan::camera(pd->window);
-
-		pd->window->add_mouse_move_callback([peer](fan::window* window){
-			fan::vec2 position = window->get_mouse_position();
-			send_packet_cursor(peer, position.x, position.y);
-		});
-
-		pd->window->add_close_callback([peer]{
-			NET_TCP_closehard(peer);
-		});
-
-		pd->window->add_key_callback(fan::key_escape, [&]{
-			NET_TCP_closehard(peer);
-		});
-
 		fan_2d::image_load_properties::internal_format = GL_RGB;
 		fan_2d::image_load_properties::format = GL_RGB;
 		fan_2d::image_load_properties::type = GL_UNSIGNED_BYTE;
 
-		pd->image = new fan_2d::sprite(pd->camera);
+		pd->gui = new std::remove_pointer<decltype(pd->gui)>::type;
+
+		pd->gui->window.auto_close(false);
+
+		pd->gui->window.add_mouse_move_callback([peer](fan::window* window){
+			fan::vec2 position = window->get_mouse_position();
+			send_packet_cursor(peer, position.x, position.y);
+		});
+
+		pd->gui->window.add_close_callback([peer]{
+			NET_TCP_closehard(peer);
+		});
+
+		pd->gui->window.add_key_callback(fan::key_escape, [&]{
+			NET_TCP_closehard(peer);
+		});
+
+		pd->gui->close = 0;
+
+		EV_tp_init(&pd->guitp, (EV_tp_cbin_t)com_view_main_cb, (EV_tp_cbout_t)EMPTY_FUNCTION);
+		EV_tp_start(peer->parent->listener, &pd->guitp, 1);
 
 		IO_print(FD_OUT, "[+] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
 	}
@@ -556,11 +565,7 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 		av_frame_close(pd->av.frame);
 		av_packet_close(pd->av.packet);
 
-		EV_evtstop(peer->parent->listener, &pd->tmain);
-
-		delete pd->window;
-		delete pd->camera;
-		delete pd->image;
+		pd->gui->close = 1;
 	}while(0);
 	return 0;
 }
@@ -575,8 +580,8 @@ void com_view_frame_cb(NET_TCP_peer_t *peer, void *sd, com_view_peerdata_t *pd){
 	pd->pixmap.Current = 0;
 	A_vec_handle0(&pd->pixmap, pd->av.frame->width * pd->av.frame->height * 3);
 	assert(!av_frame_read(pd->av.frame, pd->pixmap.ptr, pd->av.frame->width, pd->av.frame->height, AV_PIX_FMT_RGB24));
-	pd->image->reload_sprite(pd->pixmap.ptr, fan::vec2i(pd->av.frame->width, pd->av.frame->height));
-	pd->image->set_size(pd->window->get_size());
+	pd->gui->image.reload_sprite(pd->pixmap.ptr, fan::vec2i(pd->av.frame->width, pd->av.frame->height));
+	pd->gui->image.set_size(pd->gui->window.get_size());
 }
 void com_view_cursor_cb(NET_TCP_peer_t *peer, void *sd, com_view_peerdata_t *pd){
 	packet_cursor_t *cursor = (packet_cursor_t *)pd->packet.ptr;
@@ -750,12 +755,12 @@ typedef struct{
 		uint64_t last;
 		uint32_t fps;
 	}av;
-	EV_evt_t evt;
+	EV_ev_t_t evt;
 
 	ptype_t ptype;
 	A_vec_t packet;
 }com_grabto_peerdata_t;
-void com_grabto_encode_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
+void com_grabto_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	uint64_t t0 = T_nowi();
 	com_grabto_peerdata_t *pd = OFFSETLESS(evt, com_grabto_peerdata_t, evt);
 	uint8_t *pixelbuf = IO_SCR_read(&pd->scr);
@@ -792,7 +797,7 @@ void com_grabto_encode_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
 uint32_t com_grabto_connstate_cb(NET_TCP_peer_t *peer, void *sd, com_grabto_peerdata_t *pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
 		IO_print(FD_OUT, "[+] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
-		EV_evtstart(peer->parent->listener, &pd->evt);
+		EV_ev_t_start(peer->parent->listener, &pd->evt);
 	}
 	else do{
 		IO_print(FD_OUT, "[-] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
@@ -800,7 +805,7 @@ uint32_t com_grabto_connstate_cb(NET_TCP_peer_t *peer, void *sd, com_grabto_peer
 		if(!(flag & NET_TCP_connstate_init_e)){
 			break;
 		}
-		EV_evtstop(peer->parent->listener, &pd->evt);
+		EV_ev_t_stop(peer->parent->listener, &pd->evt);
 	}while(0);
 
 	return 0;
@@ -892,8 +897,8 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	}
 	assert(rinread >= 0);
 
-	sd->evt = EV_evt((f64_t)1 / framerate, (EV_evcb_t)com_grab_encode_cb);
-	EV_evtstart(&base->listener, &sd->evt);
+	EV_ev_t_init(&sd->evt, (f64_t)1 / framerate, (EV_ev_cb_t)com_grab_encode_cb);
+	EV_ev_t_start(&base->listener, &sd->evt);
 
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grab_connstate_cb);
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grab_read_cb);
@@ -988,12 +993,12 @@ bool com_grabto(base_t *base, NET_addr_t addr, uint64_t secret, uint32_t framera
 	pd->ptype.type = PACKET_TOTAL;
 	pd->packet = A_vec(1);
 
-	pd->evt = EV_evt((f64_t)1 / framerate, (EV_evcb_t)com_grabto_encode_cb);
+	EV_ev_t_init(&pd->evt, (f64_t)1 / framerate, (EV_ev_cb_t)com_grabto_encode_cb);
 
 	return 0;
 }
 
-void gui_main_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
+void gui_main_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	base_t *base = OFFSETLESS(evt, base_t, gui.evt);
 	base->gui.window.execute(0, [&]{
 		if (base->gui.window.key_press(fan::mouse_left)) {
@@ -1019,14 +1024,15 @@ void gui_main_cb(EV_t *listener, EV_evt_t *evt, uint32_t flag){
 	fan::window::handle_events();
 }
 
-void run(base_t* base){
+void run(base_t *base){
 	EV_open(&base->listener);
 
 	VAS_open(&base->net.tcp.server, sizeof(NET_TCP_t *));
 	com_view_init(base);
 	com_grabto_init(base);
 
-	base->gui.window.set_vsync(true);
+	base->gui.window.set_vsync(false);
+	base->gui.window.set_max_fps(fan::get_screen_refresh_rate());
 	base->gui.window.add_close_callback([&]{
 		PR_exit(0);
 	});
@@ -1180,8 +1186,8 @@ void run(base_t* base){
 		}
 	});
 
-	base->gui.evt = EV_evt(.001, (EV_evcb_t)gui_main_cb);
-	EV_evtstart(&base->listener, &base->gui.evt);
+	EV_ev_t_init(&base->gui.evt, .001, (EV_ev_cb_t)gui_main_cb);
+	EV_ev_t_start(&base->listener, &base->gui.evt);
 
 	EV_start(&base->listener);
 }
