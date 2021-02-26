@@ -424,7 +424,7 @@ void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 		sd->av.fps = 0;
 	}
 	if(result >= expected){
-		IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
+		//IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
 	}
 }
 uint32_t com_grab_connstate_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_grab_peerdata_t *pd, uint8_t flag){
@@ -578,7 +578,7 @@ void com_view_frame_cb(NET_TCP_peer_t *peer, void *sd, com_view_peerdata_t *pd){
 	A_vec_handle0(&pd->pixmap, pd->av.frame->width * pd->av.frame->height * 3);
 	assert(!av_frame_read(pd->av.frame, pd->pixmap.ptr, pd->av.frame->width, pd->av.frame->height, AV_PIX_FMT_RGB24));
 	pd->image->reload_sprite(0, pd->pixmap.ptr, fan::vec2i(pd->av.frame->width, pd->av.frame->height));
-//	pd->image->set_size(0, pd->window->get_size());
+	pd->image->set_size(0, pd->window->get_size());
 }
 void com_view_cursor_cb(NET_TCP_peer_t *peer, void *sd, com_view_peerdata_t *pd){
 	packet_cursor_t *cursor = (packet_cursor_t *)pd->packet.ptr;
@@ -783,12 +783,12 @@ void com_grabto_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	if(t1 > (pd->av.last + 1000000000)){
 		pd->av.last = t1;
 		if(pd->av.context->time_base.den > pd->av.fps){
-			IO_print(FD_OUT, "OVERLOAD fps result %lu expected %lu\n", pd->av.fps, pd->av.context->time_base.den);
+			//IO_print(FD_OUT, "OVERLOAD fps result %lu expected %lu\n", pd->av.fps, pd->av.context->time_base.den);
 		}
 		pd->av.fps = 0;
 	}
 	if(result >= expected){
-		IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
+		//IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
 	}
 }
 uint32_t com_grabto_connstate_cb(NET_TCP_peer_t *peer, void *sd, com_grabto_peerdata_t *pd, uint8_t flag){
@@ -1028,7 +1028,7 @@ void run(base_t* base){
 	com_view_init(base);
 	com_grabto_init(base);
 
-	base->gui.window.set_vsync(true);
+	base->gui.window.set_vsync(false);
 	base->gui.window.add_close_callback([&]{
 		PR_exit(0);
 	});
