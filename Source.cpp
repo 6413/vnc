@@ -2,6 +2,7 @@
 #include <WITCH/PR/PR.h>
 #include <WITCH/T/T.h>
 #include <WITCH/A/A.h>
+#include <WITCH/VEC/VEC.h>
 #include <WITCH/RAND/RAND.h>
 #include <WITCH/VAS/VAS.h>
 #include <WITCH/STR/STR.h>
@@ -223,7 +224,7 @@ bool process_incoming_packet(
 	uint8_t *data,
 	uint_t size,
 	ptype_t *ptype,
-	A_vec_t *packet,
+	VEC_t *packet,
 	packet_cb_t frame_cb,
 	packet_cb_t keyframe_cb,
 	packet_cb_t cursor_cb,
@@ -236,7 +237,7 @@ begin_gt:
 				case 0:{
 					if((packet->Current + size) >= sizeof(uint32_t)){
 						uint8_t pushed = sizeof(uint32_t) - packet->Current;
-						A_vec_pushbackn(packet, uint8_t, data, pushed);
+						VEC_pushbackn(packet, data, pushed);
 						ptype->s.frame.round = 1;
 						ptype->s.frame.size = *(uint32_t *)packet->ptr;
 						packet->Current = 0;
@@ -244,14 +245,14 @@ begin_gt:
 						size -= pushed;
 					}
 					else{
-						A_vec_pushbackn(packet, uint8_t, data, size);
+						VEC_pushbackn(packet, data, size);
 						return 0;
 					}
 				}
 				case 1:{
 					if((packet->Current + size) >= ptype->s.frame.size){
 						uint32_t pushed = ptype->s.frame.size - packet->Current;
-						A_vec_pushbackn(packet, uint8_t, data, pushed);
+						VEC_pushbackn(packet, data, pushed);
 						frame_cb(u0, u1, u2);
 						data += pushed;
 						size -= pushed;
@@ -260,7 +261,7 @@ begin_gt:
 						goto begin_gt;
 					}
 					else{
-						A_vec_pushbackn(packet, uint8_t, data, size);
+						VEC_pushbackn(packet, data, size);
 						return 0;
 					}
 				}
@@ -272,7 +273,7 @@ begin_gt:
 				case 0:{
 					if((packet->Current + size) >= sizeof(uint32_t)){
 						uint8_t pushed = sizeof(uint32_t) - packet->Current;
-						A_vec_pushbackn(packet, uint8_t, data, pushed);
+						VEC_pushbackn(packet, data, pushed);
 						ptype->s.frame.round = 1;
 						ptype->s.frame.size = *(uint32_t *)packet->ptr;
 						packet->Current = 0;
@@ -280,14 +281,14 @@ begin_gt:
 						size -= pushed;
 					}
 					else{
-						A_vec_pushbackn(packet, uint8_t, data, size);
+						VEC_pushbackn(packet, data, size);
 						return 0;
 					}
 				}
 				case 1:{
 					if((packet->Current + size) >= ptype->s.frame.size){
 						uint32_t pushed = ptype->s.frame.size - packet->Current;
-						A_vec_pushbackn(packet, uint8_t, data, pushed);
+						VEC_pushbackn(packet, data, pushed);
 						keyframe_cb(u0, u1, u2);
 						data += pushed;
 						size -= pushed;
@@ -296,7 +297,7 @@ begin_gt:
 						goto begin_gt;
 					}
 					else{
-						A_vec_pushbackn(packet, uint8_t, data, size);
+						VEC_pushbackn(packet, data, size);
 						return 0;
 					}
 				}
@@ -306,7 +307,7 @@ begin_gt:
 		case PACKET_CURSOR:{
 			if((packet->Current + size) >= sizeof(packet_cursor_t)){
 				uint_t pushed = sizeof(packet_cursor_t) - packet->Current;
-				A_vec_pushbackn(packet, uint8_t, data, pushed);
+				VEC_pushbackn(packet, data, pushed);
 				cursor_cb(u0, u1, u2);
 				data += pushed;
 				size -= pushed;
@@ -315,7 +316,7 @@ begin_gt:
 				goto begin_gt;
 			}
 			else{
-				A_vec_pushbackn(packet, uint8_t, data, size);
+				VEC_pushbackn(packet, data, size);
 				return 0;
 			}
 			break;
@@ -323,7 +324,7 @@ begin_gt:
 		case PACKET_KEY:{
 			if((packet->Current + size) >= sizeof(packet_key_t)){
 				uint8_t pushed = sizeof(packet_key_t) - packet->Current;
-				A_vec_pushbackn(packet, uint8_t, data, pushed);
+				VEC_pushbackn(packet, data, pushed);
 				key_cb(u0, u1, u2);
 				data += pushed;
 				size -= pushed;
@@ -332,7 +333,7 @@ begin_gt:
 				goto begin_gt;
 			}
 			else{
-				A_vec_pushbackn(packet, uint8_t, data, size);
+				VEC_pushbackn(packet, data, size);
 				return 0;
 			}
 			break;
@@ -379,7 +380,7 @@ typedef struct{
 		av_context_t *context;
 		av_frame_t *frame;
 		av_packet_t *packet;
-		A_vec_t initialdata;
+		VEC_t initialdata;
 		uint64_t last;
 		uint32_t fps;
 	}av;
@@ -388,7 +389,7 @@ typedef struct{
 typedef struct{
 	VAS_node_t node;
 	ptype_t ptype;
-	A_vec_t packet;
+	VEC_t packet;
 }com_grab_peerdata_t;
 void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	uint64_t t0 = T_nowi();
@@ -401,7 +402,7 @@ void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	while((rinread = av_inread(sd->av.context, sd->av.packet)) > 0){
 		if(sd->av.packet->flags & AV_PKT_FLAG_KEY){
 			sd->av.initialdata.Current = 0;
-			A_vec_pushbackn(&sd->av.initialdata, uint8_t, sd->av.packet->data, rinread);
+			VEC_pushbackn(&sd->av.initialdata, sd->av.packet->data, rinread);
 		}
 		VAS_node_t inode = *VAS_road0(&sd->peers, sd->peers.src);
 		while(inode != sd->peers.dst){
@@ -431,7 +432,7 @@ uint32_t com_grab_connstate_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, co
 	if(flag & NET_TCP_connstate_succ_e){
 		IO_print(FD_OUT, "[+] %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
 		pd->ptype.type = PACKET_TOTAL;
-		pd->packet = A_vec(1);
+		VEC_init(&pd->packet, 1);
 		pd->node = VAS_getnode_dst(&sd->peers);
 		*(NET_TCP_peer_t **)VAS_out(&sd->peers, pd->node) = peer;
 		send_packet_frame(peer, sd->av.initialdata.Current);
@@ -443,7 +444,7 @@ uint32_t com_grab_connstate_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, co
 			break;
 		}
 		VAS_unlink(&sd->peers, pd->node);
-		A_vec_free(&pd->packet);
+		VEC_free(&pd->packet);
 	}while(0);
 
 	return 0;
@@ -474,8 +475,8 @@ uint32_t com_grab_read_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_gra
 
 struct com_view_peerdata_t{
 	ptype_t ptype;
-	A_vec_t packet;
-	A_vec_t pixmap;
+	VEC_t packet;
+	VEC_t pixmap;
 
 	struct{
 		av_codec_t *codec;
@@ -502,8 +503,8 @@ void com_view_main_cb(EV_t* listener, EV_ev_t_t* evt, uint32_t flag){
 uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata_t* pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
 		pd->ptype.type = PACKET_TOTAL;
-		pd->packet = A_vec(1, av_resize);
-		pd->pixmap = A_vec(1, av_resize);
+		VEC_init(&pd->packet, 1, av_resize);
+		VEC_init(&pd->pixmap, 1, av_resize);
 
 		pd->av.codec = av_decoder_open(AV_CODEC_ID_H264);
 		assert(pd->av.codec);
@@ -551,7 +552,7 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 			break;
 		}
 
-		A_vec_free(&pd->pixmap);
+		VEC_free(&pd->pixmap);
 
 		av_codec_close(pd->av.codec);
 		av_context_close(pd->av.context);
@@ -575,7 +576,7 @@ void com_view_frame_cb(NET_TCP_peer_t *peer, void *sd, com_view_peerdata_t *pd){
 		return;
 	}
 	pd->pixmap.Current = 0;
-	A_vec_handle0(&pd->pixmap, pd->av.frame->width * pd->av.frame->height * 3);
+	VEC_handle0(&pd->pixmap, pd->av.frame->width * pd->av.frame->height * 3);
 	assert(!av_frame_read(pd->av.frame, pd->pixmap.ptr, pd->av.frame->width, pd->av.frame->height, AV_PIX_FMT_RGB24));
 	pd->image->reload_sprite(0, pd->pixmap.ptr, fan::vec2i(pd->av.frame->width, pd->av.frame->height));
 	pd->image->set_size(0, pd->window->get_size());
@@ -620,21 +621,21 @@ typedef struct{
 	NET_TCP_eid_t eid;
 	NET_TCP_peer_t *main_peer;
 	struct{
-		A_vec_t initialdata;
+		VEC_t initialdata;
 	}av;
 	ptype_t ptype;
-	A_vec_t packet;
+	VEC_t packet;
 }com_grabfrom_sockdata_t;
 typedef struct{
 	VAS_node_t node;
 	bool state;
 	ptype_t ptype;
-	A_vec_t packet;
+	VEC_t packet;
 }com_grabfrom_peerdata_t;
 uint32_t com_grabfrom_connstate_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, com_grabfrom_peerdata_t *pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
 		pd->ptype.type = PACKET_TOTAL;
-		pd->packet = A_vec(1);
+		VEC_init(&pd->packet, 1);
 		if(!sd->main_peer){
 			IO_print(FD_OUT, "[+] main peer %08x%04x\n", peer->sdstaddr.ip, peer->sdstaddr.port);
 			sd->main_peer = peer;
@@ -671,7 +672,7 @@ void com_grabfrom_keyframe_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 		return;
 	}
 	sd->av.initialdata.Current = 0;
-	A_vec_pushbackn(&sd->av.initialdata, uint8_t, sd->packet.ptr, sd->packet.Current);
+	VEC_pushbackn(&sd->av.initialdata, sd->packet.ptr, sd->packet.Current);
 }
 void com_grabfrom_cursor_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd, void *pd){
 	if(peer == sd->main_peer){
@@ -755,7 +756,7 @@ typedef struct{
 	EV_ev_t_t evt;
 
 	ptype_t ptype;
-	A_vec_t packet;
+	VEC_t packet;
 }com_grabto_peerdata_t;
 void com_grabto_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	uint64_t t0 = T_nowi();
@@ -879,7 +880,7 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	assert(sd->av.frame);
 	sd->av.packet = av_packet_open();
 	assert(sd->av.packet);
-	sd->av.initialdata = A_vec(1);
+	VEC_init(&sd->av.initialdata, 1);
 	sd->av.last = T_nowi();
 	sd->av.fps = 0;
 
@@ -890,7 +891,7 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	assert(av_inwrite(sd->av.context, sd->av.frame) > 0);
 	IO_ssize_t rinread;
 	while((rinread = av_inread(sd->av.context, sd->av.packet)) > 0){
-		A_vec_pushbackn(&sd->av.initialdata, uint8_t, sd->av.packet->data, rinread);
+		VEC_pushbackn(&sd->av.initialdata, sd->av.packet->data, rinread);
 	}
 	assert(rinread >= 0);
 
@@ -940,10 +941,10 @@ VAS_node_t com_grabfrom(base_t *base, uint16_t port, uint64_t secret){
 
 	sd->main_peer = 0;
 
-	sd->av.initialdata = A_vec(1);
+	VEC_init(&sd->av.initialdata, 1);
 
 	sd->ptype.type = PACKET_TOTAL;
-	sd->packet = A_vec(1);
+	VEC_init(&sd->packet, 1);
 
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grabfrom_connstate_cb);
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grabfrom_read_cb);
@@ -988,7 +989,7 @@ bool com_grabto(base_t *base, NET_addr_t addr, uint64_t secret, uint32_t framera
 	pd->av.fps = 0;
 
 	pd->ptype.type = PACKET_TOTAL;
-	pd->packet = A_vec(1);
+	VEC_init(&pd->packet, 1);
 
 	EV_ev_t_init(&pd->evt, (f64_t)1 / framerate, (EV_ev_cb_t)com_grabto_encode_cb);
 
