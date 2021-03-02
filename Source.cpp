@@ -6,12 +6,12 @@
 #include <WITCH/RAND/RAND.h>
 #include <WITCH/VAS/VAS.h>
 #include <WITCH/STR/STR.h>
-#include <WITCH/IO/SCR.h>
+#include <WITCH/IO/SCR/SCR.h>
 #include <WITCH/IO/print.h>
 #include <WITCH/EV/EV.h>
 #include <WITCH/NET/TCP/TCP.h>
 #include <WITCH/NET/TCP/TLS/TLS.h>
-#include <WITCH/ETC/av.h>
+#include <WITCH/ETC/AV/AV.h>
 
 #include <fan/graphics/graphics.hpp>
 
@@ -375,11 +375,11 @@ typedef struct{
 	VAS_t peers;
 	IO_SCR_t scr;
 	struct{
-		av_codec_t *codec;
-		av_dict_t *dict;
-		av_context_t *context;
-		av_frame_t *frame;
-		av_packet_t *packet;
+		AV_codec_t *codec;
+		AV_dict_t *dict;
+		AV_context_t *context;
+		AV_frame_t *frame;
+		AV_packet_t *packet;
 		VEC_t initialdata;
 		uint64_t last;
 		uint32_t fps;
@@ -396,10 +396,10 @@ void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	com_grab_sockdata_t *sd = OFFSETLESS(evt, com_grab_sockdata_t, evt);
 	uint8_t *pixelbuf = IO_SCR_read(&sd->scr);
 	assert(pixelbuf);
-	assert(!av_frame_write(sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_BGRA));
-	assert(av_inwrite(sd->av.context, sd->av.frame) > 0);
+	assert(!AV_frame_write(sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_BGRA));
+	assert(AV_inwrite(sd->av.context, sd->av.frame) > 0);
 	IO_ssize_t rinread;
-	while((rinread = av_inread(sd->av.context, sd->av.packet)) > 0){
+	while((rinread = AV_inread(sd->av.context, sd->av.packet)) > 0){
 		if(sd->av.packet->flags & AV_PKT_FLAG_KEY){
 			sd->av.initialdata.Current = 0;
 			VEC_pushbackn(&sd->av.initialdata, sd->av.packet->data, rinread);
@@ -479,10 +479,10 @@ struct com_view_peerdata_t{
 	VEC_t pixmap;
 
 	struct{
-		av_codec_t *codec;
-		av_context_t *context;
-		av_frame_t *frame;
-		av_packet_t *packet;
+		AV_codec_t *codec;
+		AV_context_t *context;
+		AV_frame_t *frame;
+		AV_packet_t *packet;
 	}av;
 
 	EV_ev_t_t tmain;
@@ -503,17 +503,17 @@ void com_view_main_cb(EV_t* listener, EV_ev_t_t* evt, uint32_t flag){
 uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata_t* pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
 		pd->ptype.type = PACKET_TOTAL;
-		VEC_init(&pd->packet, 1, av_resize);
-		VEC_init(&pd->pixmap, 1, av_resize);
+		VEC_init(&pd->packet, 1, AV_resize);
+		VEC_init(&pd->pixmap, 1, AV_resize);
 
-		pd->av.codec = av_decoder_open(AV_CODEC_ID_H264);
+		pd->av.codec = AV_decoder_open(AV_CODEC_ID_H264);
 		assert(pd->av.codec);
-		pd->av.context = av_context_open(pd->av.codec, 0);
+		pd->av.context = AV_context_open(pd->av.codec, 0);
 		assert(pd->av.context);
-		assert(!av_context_set(pd->av.codec, pd->av.context, 0));
-		pd->av.frame = av_frame_alloc();
+		assert(!AV_context_set(pd->av.codec, pd->av.context, 0));
+		pd->av.frame = AV_frame_alloc();
 		assert(pd->av.frame);
-		pd->av.packet = av_packet_open();
+		pd->av.packet = AV_packet_open();
 		assert(pd->av.packet);
 
 		EV_ev_t_init(&pd->tmain, .001, (EV_ev_cb_t)com_view_main_cb);
@@ -554,10 +554,10 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 
 		VEC_free(&pd->pixmap);
 
-		av_codec_close(pd->av.codec);
-		av_context_close(pd->av.context);
-		av_frame_close(pd->av.frame);
-		av_packet_close(pd->av.packet);
+		AV_codec_close(pd->av.codec);
+		AV_context_close(pd->av.context);
+		AV_frame_close(pd->av.frame);
+		AV_packet_close(pd->av.packet);
 
 		EV_ev_t_stop(peer->parent->listener, &pd->tmain);
 
@@ -568,16 +568,16 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 	return 0;
 }
 void com_view_frame_cb(NET_TCP_peer_t *peer, void *sd, com_view_peerdata_t *pd){
-	IO_ssize_t routwrite = av_outwrite(pd->av.context, pd->packet.ptr, pd->packet.Current, pd->av.packet);
+	IO_ssize_t routwrite = AV_outwrite(pd->av.context, pd->packet.ptr, pd->packet.Current, pd->av.packet);
 	assert(routwrite == pd->packet.Current);
-	IO_ssize_t routread = av_outread(pd->av.context, pd->av.frame);
+	IO_ssize_t routread = AV_outread(pd->av.context, pd->av.frame);
 	assert(routread >= 0);
 	if(!routread){
 		return;
 	}
 	pd->pixmap.Current = 0;
 	VEC_handle0(&pd->pixmap, pd->av.frame->width * pd->av.frame->height * 3);
-	assert(!av_frame_read(pd->av.frame, pd->pixmap.ptr, pd->av.frame->width, pd->av.frame->height, AV_PIX_FMT_RGB24));
+	assert(!AV_frame_read(pd->av.frame, pd->pixmap.ptr, pd->av.frame->width, pd->av.frame->height, AV_PIX_FMT_RGB24));
 	pd->image->reload_sprite(0, pd->pixmap.ptr, fan::vec2i(pd->av.frame->width, pd->av.frame->height));
 	pd->image->set_size(0, pd->window->get_size());
 }
@@ -745,11 +745,11 @@ typedef struct{
 
 	IO_SCR_t scr;
 	struct{
-		av_codec_t *codec;
-		av_dict_t *dict;
-		av_context_t *context;
-		av_frame_t *frame;
-		av_packet_t *packet;
+		AV_codec_t *codec;
+		AV_dict_t *dict;
+		AV_context_t *context;
+		AV_frame_t *frame;
+		AV_packet_t *packet;
 		uint64_t last;
 		uint32_t fps;
 	}av;
@@ -763,10 +763,10 @@ void com_grabto_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	com_grabto_peerdata_t *pd = OFFSETLESS(evt, com_grabto_peerdata_t, evt);
 	uint8_t *pixelbuf = IO_SCR_read(&pd->scr);
 	assert(pixelbuf);
-	assert(!av_frame_write(pd->av.frame, pixelbuf, pd->scr.res.x, pd->scr.res.y, AV_PIX_FMT_BGRA));
-	assert(av_inwrite(pd->av.context, pd->av.frame) > 0);
+	assert(!AV_frame_write(pd->av.frame, pixelbuf, pd->scr.res.x, pd->scr.res.y, AV_PIX_FMT_BGRA));
+	assert(AV_inwrite(pd->av.context, pd->av.frame) > 0);
 	IO_ssize_t rinread;
-	while((rinread = av_inread(pd->av.context, pd->av.packet)) > 0){
+	while((rinread = AV_inread(pd->av.context, pd->av.packet)) > 0){
 		if(pd->av.packet->flags & AV_PKT_FLAG_KEY){
 			send_packet_keyframe(pd->peer, rinread);
 			NET_TCP_qsend_ptr(pd->peer, pd->av.packet->data, rinread);
@@ -784,12 +784,12 @@ void com_grabto_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	if(t1 > (pd->av.last + 1000000000)){
 		pd->av.last = t1;
 		if(pd->av.context->time_base.den > pd->av.fps){
-			//IO_print(FD_OUT, "OVERLOAD fps result %lu expected %lu\n", pd->av.fps, pd->av.context->time_base.den);
+			IO_print(FD_OUT, "OVERLOAD fps result %lu expected %lu\n", pd->av.fps, pd->av.context->time_base.den);
 		}
 		pd->av.fps = 0;
 	}
 	if(result >= expected){
-		//IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
+		IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
 	}
 }
 uint32_t com_grabto_connstate_cb(NET_TCP_peer_t *peer, void *sd, com_grabto_peerdata_t *pd, uint8_t flag){
@@ -865,20 +865,20 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 
 	assert(!IO_SCR_open(&sd->scr));
 
-	sd->av.codec = av_encoder_open(AV_CODEC_ID_H264);
+	sd->av.codec = AV_encoder_open(AV_CODEC_ID_H264);
 	assert(sd->av.codec);
 	sd->av.dict = 0;
-	assert(av_dict_set(&sd->av.dict, "preset", "veryfast", 0) >= 0);
-	assert(av_dict_set(&sd->av.dict, "tune", "zerolatency", 0) >= 0);
-	sd->av.context = av_context_open(sd->av.codec, framerate);
+	assert(!AV_dict_set(&sd->av.dict, "preset", "veryfast", 0));
+	assert(!AV_dict_set(&sd->av.dict, "tune", "zerolatency", 0));
+	sd->av.context = AV_context_open(sd->av.codec, framerate);
 	assert(sd->av.context);
 	sd->av.context->width = sd->scr.res.x;
 	sd->av.context->height = sd->scr.res.y;
-	av_context_cbr(sd->av.context, rate);
-	assert(!av_context_set(sd->av.codec, sd->av.context, &sd->av.dict));
-	sd->av.frame = av_frame_open(sd->av.context);
+	AV_context_cbr(sd->av.context, rate);
+	assert(!AV_context_set(sd->av.codec, sd->av.context, &sd->av.dict));
+	sd->av.frame = AV_frame_open(sd->av.context);
 	assert(sd->av.frame);
-	sd->av.packet = av_packet_open();
+	sd->av.packet = AV_packet_open();
 	assert(sd->av.packet);
 	VEC_init(&sd->av.initialdata, 1);
 	sd->av.last = T_nowi();
@@ -886,11 +886,11 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 
 	uint8_t *pixelbuf = A_resize(0, sd->scr.res.x * sd->scr.res.y * 3);
 	MEM_set(0, pixelbuf, sd->scr.res.x * sd->scr.res.y * 3);
-	assert(!av_frame_write(sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_RGB24));
+	assert(!AV_frame_write(sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_RGB24));
 	A_resize(pixelbuf, 0);
-	assert(av_inwrite(sd->av.context, sd->av.frame) > 0);
+	assert(AV_inwrite(sd->av.context, sd->av.frame) > 0);
 	IO_ssize_t rinread;
-	while((rinread = av_inread(sd->av.context, sd->av.packet)) > 0){
+	while((rinread = AV_inread(sd->av.context, sd->av.packet)) > 0){
 		VEC_pushbackn(&sd->av.initialdata, sd->av.packet->data, rinread);
 	}
 	assert(rinread >= 0);
@@ -970,20 +970,20 @@ bool com_grabto(base_t *base, NET_addr_t addr, uint64_t secret, uint32_t framera
 
 	assert(!IO_SCR_open(&pd->scr));
 
-	pd->av.codec = av_encoder_open(AV_CODEC_ID_H264);
+	pd->av.codec = AV_encoder_open(AV_CODEC_ID_H264);
 	assert(pd->av.codec);
 	pd->av.dict = 0;
-	assert(av_dict_set(&pd->av.dict, "preset", "veryfast", 0) >= 0);
-	assert(av_dict_set(&pd->av.dict, "tune", "zerolatency", 0) >= 0);
-	pd->av.context = av_context_open(pd->av.codec, framerate);
+	assert(!AV_dict_set(&pd->av.dict, "preset", "veryfast", 0));
+	assert(!AV_dict_set(&pd->av.dict, "tune", "zerolatency", 0));
+	pd->av.context = AV_context_open(pd->av.codec, framerate);
 	assert(pd->av.context);
 	pd->av.context->width = pd->scr.res.x;
 	pd->av.context->height = pd->scr.res.y;
-	av_context_cbr(pd->av.context, rate);
-	assert(!av_context_set(pd->av.codec, pd->av.context, &pd->av.dict));
-	pd->av.frame = av_frame_open(pd->av.context);
+	AV_context_cbr(pd->av.context, rate);
+	assert(!AV_context_set(pd->av.codec, pd->av.context, &pd->av.dict));
+	pd->av.frame = AV_frame_open(pd->av.context);
 	assert(pd->av.frame);
-	pd->av.packet = av_packet_open();
+	pd->av.packet = AV_packet_open();
 	assert(pd->av.packet);
 	pd->av.last = T_nowi();
 	pd->av.fps = 0;
@@ -1183,7 +1183,7 @@ void run(base_t* base){
 		}
 	});
 
-	EV_ev_t_init(&base->gui.evt, .001, (EV_ev_cb_t)gui_main_cb);
+	EV_ev_t_init(&base->gui.evt, .005, (EV_ev_cb_t)gui_main_cb);
 	EV_ev_t_start(&base->listener, &base->gui.evt);
 
 	EV_start(&base->listener);
