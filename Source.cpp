@@ -392,11 +392,12 @@ typedef struct{
 	VEC_t packet;
 }com_grab_peerdata_t;
 void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
+	//fan::timer<fan::microseconds> t(fan::timer<fan::microseconds>::start());
 	uint64_t t0 = T_nowi();
 	com_grab_sockdata_t *sd = OFFSETLESS(evt, com_grab_sockdata_t, evt);
 	uint8_t *pixelbuf = IO_SCR_read(&sd->scr);
 	assert(pixelbuf);
-	assert(!AV_frame_write(sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_BGRA));
+	assert(!AV_frame_write(listener, sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_BGRA));
 	assert(AV_inwrite(sd->av.context, sd->av.frame) > 0);
 	IO_ssize_t rinread;
 	while((rinread = AV_inread(sd->av.context, sd->av.packet)) > 0){
@@ -427,6 +428,7 @@ void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	if(result >= expected){
 		//IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
 	}
+	//fan::print(t.elapsed());
 }
 uint32_t com_grab_connstate_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_grab_peerdata_t *pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
@@ -740,6 +742,8 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 	return 0;
 }
 
+#include <fan/time.hpp>
+
 typedef struct{
 	NET_TCP_peer_t *peer;
 
@@ -763,7 +767,7 @@ void com_grabto_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	com_grabto_peerdata_t *pd = OFFSETLESS(evt, com_grabto_peerdata_t, evt);
 	uint8_t *pixelbuf = IO_SCR_read(&pd->scr);
 	assert(pixelbuf);
-	assert(!AV_frame_write(pd->av.frame, pixelbuf, pd->scr.res.x, pd->scr.res.y, AV_PIX_FMT_BGRA));
+	assert(!AV_frame_write(listener, pd->av.frame, pixelbuf, pd->scr.res.x, pd->scr.res.y, AV_PIX_FMT_BGRA));
 	assert(AV_inwrite(pd->av.context, pd->av.frame) > 0);
 	IO_ssize_t rinread;
 	while((rinread = AV_inread(pd->av.context, pd->av.packet)) > 0){
@@ -886,7 +890,7 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 
 	uint8_t *pixelbuf = A_resize(0, sd->scr.res.x * sd->scr.res.y * 3);
 	MEM_set(0, pixelbuf, sd->scr.res.x * sd->scr.res.y * 3);
-	assert(!AV_frame_write(sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_RGB24));
+	assert(!AV_frame_write(&base->listener, sd->av.frame, pixelbuf, sd->scr.res.x, sd->scr.res.y, AV_PIX_FMT_RGB24));
 	A_resize(pixelbuf, 0);
 	assert(AV_inwrite(sd->av.context, sd->av.frame) > 0);
 	IO_ssize_t rinread;
@@ -997,16 +1001,14 @@ bool com_grabto(base_t *base, NET_addr_t addr, uint64_t secret, uint32_t framera
 }
 
 void gui_main_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
+
 	base_t *base = OFFSETLESS(evt, base_t, gui.evt);
 	base->gui.window.execute(0, [&]{
 		if (base->gui.window.key_press(fan::mouse_left)) {
 			bool found = false;
 
 			for (int i = 0; i < base->gui.stb.size(); i++) {
-				if (base->gui.stb.inside(i)) {
-					base->gui.stb.get_mouse_cursor(i, base->gui.stb.get_position(i), base->gui.stb.get_size(i));
-					found = true;
-				}
+				base->gui.stb.get_mouse_cursor(i);
 			}
 
 			if (!found) {
@@ -1017,7 +1019,10 @@ void gui_main_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 		base->gui.stb.draw();
 		base->gui.boxes.draw();
 		base->gui.tr.draw();
+		//base->gui.window.get_fps();
 	});
+
+
 
 	fan::window::handle_events();
 }
@@ -1183,7 +1188,7 @@ void run(base_t* base){
 		}
 	});
 
-	EV_ev_t_init(&base->gui.evt, .005, (EV_ev_cb_t)gui_main_cb);
+	EV_ev_t_init(&base->gui.evt, 0.001, (EV_ev_cb_t)gui_main_cb);
 	EV_ev_t_start(&base->listener, &base->gui.evt);
 
 	EV_start(&base->listener);
