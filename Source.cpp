@@ -392,7 +392,6 @@ typedef struct{
 	VEC_t packet;
 }com_grab_peerdata_t;
 void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
-	//fan::timer<fan::microseconds> t(fan::timer<fan::microseconds>::start());
 	uint64_t t0 = T_nowi();
 	com_grab_sockdata_t *sd = OFFSETLESS(evt, com_grab_sockdata_t, evt);
 	uint8_t *pixelbuf = IO_SCR_read(&sd->scr);
@@ -428,7 +427,6 @@ void com_grab_encode_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 	if(result >= expected){
 		//IO_print(FD_OUT, "OVERLOAD encode result %llu expected %llu\n", result, expected);
 	}
-	//fan::print(t.elapsed());
 }
 uint32_t com_grab_connstate_cb(NET_TCP_peer_t *peer, com_grab_sockdata_t *sd, com_grab_peerdata_t *pd, uint8_t flag){
 	if(flag & NET_TCP_connstate_succ_e){
@@ -522,6 +520,7 @@ uint32_t com_view_connstate_cb(NET_TCP_peer_t* peer, void *sd, com_view_peerdata
 		EV_ev_t_start(peer->parent->listener, &pd->tmain);
 
 		pd->window = new fan::window();
+		pd->window->set_vsync(true);
 		pd->window->auto_close(false);
 		pd->camera = new fan::camera(pd->window);
 
@@ -742,8 +741,6 @@ uint32_t com_grabfrom_read_cb(NET_TCP_peer_t *peer, com_grabfrom_sockdata_t *sd,
 	return 0;
 }
 
-#include <fan/time.hpp>
-
 typedef struct{
 	NET_TCP_peer_t *peer;
 
@@ -854,18 +851,22 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	*tcp = NET_TCP_alloc(&base->listener);
 	(*tcp)->ssrcaddr.port = port;
 
-	if(NET_TCP_listen0(*tcp)){
-		NET_TCP_free(*tcp);
-		VAS_unlink(&base->net.tcp.server, node);
-		return (VAS_node_t)-1;
-	}
-
 	init_tls(*tcp);
 	init_server_secret(*tcp, secret);
 	NET_TCP_eid_t eid = NET_TCP_EXT_new(*tcp, sizeof(com_grab_sockdata_t), sizeof(com_grab_peerdata_t));
 	com_grab_sockdata_t *sd = (com_grab_sockdata_t *)NET_TCP_EXT_get_sockdata(*tcp, eid);
 
 	VAS_open(&sd->peers, sizeof(NET_TCP_peer_t *));
+
+	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grab_connstate_cb);
+	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grab_read_cb);
+
+	if(NET_TCP_listen(*tcp)){
+		NET_TCP_free(*tcp);
+		VAS_unlink(&base->net.tcp.server, node);
+		return (VAS_node_t)-1;
+	}
+	EV_ev_io_start(&base->listener, &(*tcp)->ev);
 
 	assert(!IO_SCR_open(&sd->scr));
 
@@ -902,24 +903,17 @@ VAS_node_t com_grab(base_t *base, uint16_t port, uint64_t secret, uint32_t frame
 	EV_ev_t_init(&sd->evt, (f64_t)1 / framerate, (EV_ev_cb_t)com_grab_encode_cb);
 	EV_ev_t_start(&base->listener, &sd->evt);
 
-	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grab_connstate_cb);
-	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grab_read_cb);
-
-	assert(!NET_TCP_listen1(*tcp));
-
 	return node;
 }
 
-bool com_view(base_t *base, NET_addr_t addr, uint64_t secret){
-	NET_TCP_connect0_t connect0;
-	if(NET_TCP_connect0(base->net.tcp.tcpview, addr, &connect0)){
-		return 1;
+NET_TCP_peer_t *com_view(base_t *base, NET_addr_t addr, uint64_t secret){
+	NET_TCP_peer_t *peer = NET_TCP_connect(base->net.tcp.tcpview, addr);
+	if(!peer){
+		return 0;
 	}
-	init_client_secret_peerdata(connect0.peer, base->net.tcp.tcpview_secret_eid, secret);
-	if(NET_TCP_connect1(&connect0)){
-		return 1;
-	}
-	return 0;
+	init_client_secret_peerdata(peer, base->net.tcp.tcpview_secret_eid, secret);
+	EV_ev_tio_start(&base->listener, &peer->ev);
+	return peer;
 }
 
 VAS_node_t com_grabfrom(base_t *base, uint16_t port, uint64_t secret){
@@ -928,12 +922,6 @@ VAS_node_t com_grabfrom(base_t *base, uint16_t port, uint64_t secret){
 
 	*tcp = NET_TCP_alloc(&base->listener);
 	(*tcp)->ssrcaddr.port = port;
-
-	if(NET_TCP_listen0(*tcp)){
-		NET_TCP_free(*tcp);
-		VAS_unlink(&base->net.tcp.server, node);
-		return (VAS_node_t)-1;
-	}
 
 	init_tls(*tcp);
 	init_server_secret(*tcp, secret);
@@ -953,24 +941,24 @@ VAS_node_t com_grabfrom(base_t *base, uint16_t port, uint64_t secret){
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_connstate_e, eid, (void *)com_grabfrom_connstate_cb);
 	NET_TCP_EXTcbadd(*tcp, NET_TCP_oid_read_e, eid, (void *)com_grabfrom_read_cb);
 
-	assert(!NET_TCP_listen1(*tcp));
+	if(NET_TCP_listen(*tcp)){
+		NET_TCP_free(*tcp);
+		VAS_unlink(&base->net.tcp.server, node);
+		return (VAS_node_t)-1;
+	}
+	EV_ev_io_start(&base->listener, &(*tcp)->ev);
 
 	return node;
 }
 
 bool com_grabto(base_t *base, NET_addr_t addr, uint64_t secret, uint32_t framerate, uint32_t rate){
-	NET_TCP_connect0_t connect0;
-	if(NET_TCP_connect0(base->net.tcp.tcpgrabto, addr, &connect0)){
-		return 1;
-	}
-	init_client_secret_peerdata(connect0.peer, base->net.tcp.tcpgrabto_secret_eid, secret);
-	if(NET_TCP_connect1(&connect0)){
-		return 1;
-	}
+	NET_TCP_peer_t *peer = NET_TCP_connect(base->net.tcp.tcpgrabto, addr);
 
-	com_grabto_peerdata_t *pd = (com_grabto_peerdata_t *)NET_TCP_EXT_get_peerdata(connect0.peer, base->net.tcp.tcpgrabto_eid);
+	init_client_secret_peerdata(peer, base->net.tcp.tcpgrabto_secret_eid, secret);
 
-	pd->peer = connect0.peer;
+	com_grabto_peerdata_t *pd = (com_grabto_peerdata_t *)NET_TCP_EXT_get_peerdata(peer, base->net.tcp.tcpgrabto_eid);
+
+	pd->peer = peer;
 
 	assert(!IO_SCR_open(&pd->scr));
 
@@ -1001,7 +989,6 @@ bool com_grabto(base_t *base, NET_addr_t addr, uint64_t secret, uint32_t framera
 }
 
 void gui_main_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
-
 	base_t *base = OFFSETLESS(evt, base_t, gui.evt);
 	base->gui.window.execute(0, [&]{
 		if (base->gui.window.key_press(fan::mouse_left)) {
@@ -1019,10 +1006,7 @@ void gui_main_cb(EV_t *listener, EV_ev_t_t *evt, uint32_t flag){
 		base->gui.stb.draw();
 		base->gui.boxes.draw();
 		base->gui.tr.draw();
-		//base->gui.window.get_fps();
 	});
-
-
 
 	fan::window::handle_events();
 }
@@ -1067,7 +1051,7 @@ void run(base_t* base){
 				base->gui.formBegin();
 				base->gui.formPush(L"Port:", fan::colors::white, L"8081", fan::colors::cyan - 0.9);
 				base->gui.formPush(L"Secret:", fan::colors::white, L"123", fan::colors::cyan - 0.9);
-				base->gui.formPush(L"FPS:", fan::colors::white, L"10", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"FPS:", fan::colors::white, L"20", fan::colors::cyan - 0.9);
 				base->gui.formPush(L"Rate:", fan::colors::white, L"200000", fan::colors::cyan - 0.9);
 				base->gui.formEnd(0);
 
@@ -1104,7 +1088,7 @@ void run(base_t* base){
 				base->gui.formPush(L"IP:", fan::colors::white, L"127.0.0.1", fan::colors::cyan - 0.9);
 				base->gui.formPush(L"Port:", fan::colors::white, L"8081", fan::colors::cyan - 0.9);
 				base->gui.formPush(L"Secret:", fan::colors::white, L"123", fan::colors::cyan - 0.9);
-				base->gui.formPush(L"FPS:", fan::colors::white, L"10", fan::colors::cyan - 0.9);
+				base->gui.formPush(L"FPS:", fan::colors::white, L"20", fan::colors::cyan - 0.9);
 				base->gui.formPush(L"Rate:", fan::colors::white, L"200000", fan::colors::cyan - 0.9);
 				base->gui.formEnd(0);
 
@@ -1143,8 +1127,11 @@ void run(base_t* base){
 
 						uint64_t secret = std::stoi(base->gui.stb.get_line(2, 0));
 
-						bool r = com_view(base, net_addr, secret);
-						assert(!r);
+						if(!com_view(base, net_addr, secret)){
+							/* com_view returns NET_TCP_peer_t * */
+							/* 0 pointer means failed to open. how should we handle this? */
+							assert(0); /* TODO */
+						}
 
 						break;
 					}
@@ -1188,7 +1175,7 @@ void run(base_t* base){
 		}
 	});
 
-	EV_ev_t_init(&base->gui.evt, 0.001, (EV_ev_cb_t)gui_main_cb);
+	EV_ev_t_init(&base->gui.evt, .2, (EV_ev_cb_t)gui_main_cb);
 	EV_ev_t_start(&base->listener, &base->gui.evt);
 
 	EV_start(&base->listener);
